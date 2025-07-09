@@ -3,8 +3,7 @@ const mongoose = require("mongoose");
 // MongoDB connection
 const connectMongoDB = async () => {
   try {
-    // For local development, use MongoDB local instance
-    // For production, use MongoDB Atlas connection string
+    // Using MongoDB Atlas connection string
     const mongoURI =
       process.env.MONGODB_URI || "mongodb://localhost:27017/studybuddy";
 

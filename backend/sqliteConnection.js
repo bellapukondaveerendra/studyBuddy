@@ -10,7 +10,6 @@ let db = new sqlite3.Database("./studybuddy.db", (err) => {
 });
 
 // You can then perform database operations using methods like db.run(), db.get(), db.all(), etc.
-// Example: Creating a table
 db.run(`select * from user_login_data_table`, (err) => {
   if (err) {
     console.error(err.message);
@@ -19,7 +18,7 @@ db.run(`select * from user_login_data_table`, (err) => {
   }
 });
 
-// Close the database connection when done (important for preventing resource leaks)
+// Close the database connection when done
 db.close((err) => {
   if (err) {
     console.error(err.message);
