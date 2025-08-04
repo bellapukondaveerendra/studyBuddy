@@ -168,21 +168,21 @@ export const groupsAPI = {
   },
   // Invite member to existing group (new function needed)
   inviteMember: async (groupId, email) => {
-    const response = await api.post(`/api/groups/${groupId}/invite`, {
+    const response = await api.post(`/groups/${groupId}/invite`, {
       member_emails: [email],
     });
     return response.data;
   },
   // Add existing user directly to group (if this doesn't exist)
   addMemberDirectly: async (groupId, userId) => {
-    const response = await api.post(`/api/groups/${groupId}/add-member`, {
+    const response = await api.post(`/groups/${groupId}/add-member`, {
       user_id: userId,
     });
     return response.data;
   },
   // Get pending invitations for a group (admin only)
   getGroupInvitations: async (groupId) => {
-    const response = await api.get(`/api/groups/${groupId}/invitations`);
+    const response = await api.get(`/groups/${groupId}/invitations`);
     return response.data;
   },
 };
