@@ -311,7 +311,17 @@ const mongoOperations = {
       // Generate group ID
       const group_id = await mongoOperations.generateGroupId();
 
-      // Create group
+      // Generate meeting link automatically for admin
+      const meetCode =
+        Math.random().toString(36).substring(2, 5) +
+        "-" +
+        Math.random().toString(36).substring(2, 6) +
+        "-" +
+        Math.random().toString(36).substring(2, 5);
+
+      const meetingLink = `https://meet.google.com/${meetCode}`;
+
+      // Create group with meeting link already included
       const newGroup = new GroupData({
         group_id,
         name: groupData.name,
@@ -319,6 +329,10 @@ const mongoOperations = {
         level: groupData.level,
         time_commitment: groupData.time_commitment,
         created_by: creatorUserId,
+        overview: {
+          meeting_link: meetingLink,
+          meeting_link_created_at: new Date(),
+        },
       });
 
       await newGroup.save({ session });
@@ -342,7 +356,8 @@ const mongoOperations = {
         group: newGroup,
         group_id: group_id,
         member_emails: memberEmails, // Return for invitation processing
-        message: "Study group created successfully",
+        meeting_link: meetingLink, // Include meeting link in response
+        message: "Study group created successfully with meeting link",
       };
     } catch (error) {
       await session.abortTransaction();

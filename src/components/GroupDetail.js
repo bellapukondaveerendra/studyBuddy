@@ -2,20 +2,23 @@ import React, { useState, useEffect } from "react";
 import {
   ArrowLeft,
   Users,
-  Copy,
+  FileText,
+  MessageCircle,
+  BookOpen,
+  Clock,
+  TrendingUp,
   Crown,
   UserMinus,
-  Clock,
-  BookOpen,
-  TrendingUp,
-  Plus,
-  ExternalLink,
-  FileText,
+  UserPlus,
+  Mail,
   Link,
+  ExternalLink,
   Trash2,
   Send,
+  Plus,
+  Copy,
   Save,
-  MessageCircle,
+  X,
 } from "lucide-react";
 import { groupsAPI } from "../services/api";
 
@@ -24,6 +27,9 @@ const GroupDetail = ({ groupId, onNavigate }) => {
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState({ text: "", type: "" });
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [invitingMember, setInvitingMember] = useState(false);
 
   // Overview state
   const [generatingLink, setGeneratingLink] = useState(false);
@@ -171,6 +177,55 @@ const GroupDetail = ({ groupId, onNavigate }) => {
       showMessage(errorMessage, "error");
     } finally {
       setAddingResource(false);
+    }
+  };
+
+  const handleInviteMember = async () => {
+    if (!newMemberEmail.trim()) {
+      showMessage("Please enter an email address", "error");
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newMemberEmail)) {
+      showMessage("Please enter a valid email address", "error");
+      return;
+    }
+
+    try {
+      setInvitingMember(true);
+
+      // Check if email is valid first
+      const checkResponse = await groupsAPI.checkEmailExists(newMemberEmail);
+
+      if (checkResponse.user) {
+        // User exists - add directly to group
+        await groupsAPI.joinGroup(groupId, checkResponse.user.user_id);
+        showMessage(
+          `${newMemberEmail} has been added to the group!`,
+          "success"
+        );
+      } else {
+        // User doesn't exist - send invitation
+        const inviteResponse = await groupsAPI.inviteMember(
+          groupId,
+          newMemberEmail
+        );
+        showMessage(`Invitation sent to ${newMemberEmail}!`, "success");
+      }
+
+      // Reset form and refresh group data
+      setNewMemberEmail("");
+      setShowAddMember(false);
+      fetchGroupDetails(); // Refresh to show updated member list
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message || "Failed to invite member";
+      console.log("errorMessage", error);
+      showMessage(errorMessage, "error");
+    } finally {
+      setInvitingMember(false);
     }
   };
 
@@ -367,7 +422,76 @@ const GroupDetail = ({ groupId, onNavigate }) => {
 
             {/* Members Section */}
             <div className="members-section">
-              <h3>Members ({group.member_count})</h3>
+              <div className="members-header">
+                <h3>Members ({group.member_count})</h3>
+                {group.current_user_is_admin && (
+                  <button
+                    onClick={() => setShowAddMember(true)}
+                    className="btn btn-primary"
+                  >
+                    <UserPlus size={16} />
+                    Add Member
+                  </button>
+                )}
+              </div>
+
+              {/* Add Member Form */}
+              {showAddMember && group.current_user_is_admin && (
+                <div className="add-member-form">
+                  <h4>Invite New Member</h4>
+                  <div className="member-input-container">
+                    <div className="member-input-group">
+                      <Mail size={16} className="input-icon" />
+                      <input
+                        type="email"
+                        value={newMemberEmail}
+                        onChange={(e) => setNewMemberEmail(e.target.value)}
+                        placeholder="Enter member's email address"
+                        className="member-input"
+                        onKeyPress={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleInviteMember();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleInviteMember}
+                        disabled={invitingMember}
+                        className="add-member-btn"
+                      >
+                        {invitingMember ? (
+                          <div className="loading-spinner-small"></div>
+                        ) : (
+                          <>
+                            <Plus size={16} />
+                            Invite
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddMember(false);
+                        setNewMemberEmail("");
+                      }}
+                      className="btn btn-secondary"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <small className="field-hint">
+                    Enter the email address of the person you'd like to invite
+                    to this study group
+                  </small>
+                </div>
+              )}
+
+              {/* Existing Members List */}
               <div className="members-list">
                 {group.members.map((member) => (
                   <div key={member.user_id} className="member-item">

@@ -1076,6 +1076,129 @@ app.get("/api/admin/users", authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/groups/:group_id/invite - Invite new members to existing group
+app.post(
+  "/api/groups/:group_id/invite",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { group_id } = req.params;
+      const { member_emails } = req.body;
+
+      if (
+        !member_emails ||
+        !Array.isArray(member_emails) ||
+        member_emails.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "member_emails array is required",
+        });
+      }
+
+      // Verify user is admin of this group
+      const groupDetails = await mongoOperations.getCompleteGroupDetails(
+        group_id,
+        req.user.userId
+      );
+
+      if (!groupDetails.current_user_is_admin) {
+        return res.status(403).json({
+          success: false,
+          message: "Only group admins can invite members",
+        });
+      }
+
+      // Process member invitations (similar to create group logic)
+      const invitationResults = [];
+      const admin = await dbOperations.getUserById(req.user.userId);
+
+      for (const email of member_emails) {
+        try {
+          // Check if user exists in our system
+          const existingUsers = await dbOperations.getAllUsers();
+          const existingUser = existingUsers.find(
+            (u) => u.email.toLowerCase() === email.toLowerCase()
+          );
+
+          if (existingUser) {
+            // User exists - add directly to group
+            try {
+              await mongoOperations.joinStudyGroup(
+                existingUser.user_id,
+                group_id
+              );
+              invitationResults.push({
+                email: email,
+                status: "added",
+                message: "User added to group directly",
+              });
+            } catch (joinError) {
+              if (joinError.message.includes("already a member")) {
+                invitationResults.push({
+                  email: email,
+                  status: "already_member",
+                  message: "User is already a member",
+                });
+              } else {
+                throw joinError;
+              }
+            }
+          } else {
+            // User doesn't exist - send invitation
+            const invitationToken = generateInvitationToken();
+
+            // Create invitation record
+            await mongoOperations.createInvitation(
+              group_id,
+              email,
+              req.user.userId,
+              invitationToken
+            );
+
+            // Send invitation email
+            const emailResult = await emailService.sendGroupInvitation(
+              { email: admin.email, name: admin.email },
+              groupDetails,
+              email,
+              invitationToken
+            );
+
+            invitationResults.push({
+              email: email,
+              status: "invited",
+              message: "Invitation sent",
+              messageId: emailResult.messageId,
+            });
+          }
+        } catch (inviteError) {
+          console.error(
+            `Error processing invitation for ${email}:`,
+            inviteError
+          );
+          invitationResults.push({
+            email: email,
+            status: "error",
+            message: inviteError.message || "Failed to process invitation",
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        message: "Invitations processed successfully",
+        results: invitationResults,
+      });
+    } catch (error) {
+      console.error("Invite member error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to process invitations",
+      });
+    }
+  }
+);
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
