@@ -12,8 +12,9 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  AlertCircle,
 } from "lucide-react";
-import { groupsAPI } from "../services/api";
+import "./FindGroups.css";
 
 const FindGroups = ({ onNavigate }) => {
   const [groups, setGroups] = useState([]);
@@ -31,9 +32,8 @@ const FindGroups = ({ onNavigate }) => {
     search: "",
   });
 
-  // Sorting and display
-  const [sortBy, setSortBy] = useState("newest"); // newest, oldest, members, name
-  const [viewMode, setViewMode] = useState("grid"); // grid, list
+  // Sorting
+  const [sortBy, setSortBy] = useState("newest");
 
   useEffect(() => {
     fetchGroups();
@@ -53,12 +53,28 @@ const FindGroups = ({ onNavigate }) => {
   const fetchGroups = async () => {
     try {
       setLoading(true);
-      const response = await groupsAPI.findGroups();
-      setGroups(response.groups || []);
+      const token = localStorage.getItem("authToken");
+
+      const response = await fetch("/api/findGroups", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setGroups(data.groups || []);
+      } else {
+        const errorData = await response.json();
+        showMessage(
+          errorData.message || "Failed to fetch study groups",
+          "error"
+        );
+      }
     } catch (error) {
-      const errorMessage =
-        error.response?.data?.message || "Failed to fetch study groups";
-      showMessage(errorMessage, "error");
+      console.error("Error fetching groups:", error);
+      showMessage("Failed to fetch study groups. Please try again.", "error");
     } finally {
       setLoading(false);
     }
@@ -105,7 +121,7 @@ const FindGroups = ({ onNavigate }) => {
         case "oldest":
           return new Date(a.created_at) - new Date(b.created_at);
         case "members":
-          return b.member_count - a.member_count;
+          return (b.member_count || 0) - (a.member_count || 0);
         case "name":
           return a.name.localeCompare(b.name);
         default:
@@ -116,10 +132,10 @@ const FindGroups = ({ onNavigate }) => {
     setFilteredGroups(filtered);
   };
 
-  const handleFilterChange = (filterType, value) => {
+  const handleFilterChange = (filterName, value) => {
     setFilters((prev) => ({
       ...prev,
-      [filterType]: value,
+      [filterName]: value,
     }));
   };
 
@@ -130,23 +146,46 @@ const FindGroups = ({ onNavigate }) => {
       time_commitment: "",
       search: "",
     });
+    setShowFilters(false);
   };
 
   const handleJoinGroup = async (groupId, groupName) => {
-    if (window.confirm(`Are you sure you want to join "${groupName}"?`)) {
-      try {
-        setJoiningGroup(groupId);
-        await groupsAPI.joinGroup(groupId);
-        showMessage("Successfully joined the study group!", "success");
+    if (joiningGroup) return;
 
-        // Refresh groups to update member count
-        setTimeout(() => {
-          fetchGroups();
-        }, 1000);
+    const confirmJoin = window.confirm(
+      `Are you sure you want to request to join "${groupName}"?`
+    );
+
+    if (confirmJoin) {
+      setJoiningGroup(groupId);
+      try {
+        const token = localStorage.getItem("authToken");
+        const response = await fetch(`/api/groups/${groupId}/join`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          showMessage(
+            data.message || "Join request sent successfully!",
+            "success"
+          );
+
+          // Refresh groups to update member count
+          setTimeout(() => {
+            fetchGroups();
+          }, 1000);
+        } else {
+          const errorData = await response.json();
+          showMessage(errorData.message || "Failed to join group", "error");
+        }
       } catch (error) {
-        const errorMessage =
-          error.response?.data?.message || "Failed to join group";
-        showMessage(errorMessage, "error");
+        console.error("Error joining group:", error);
+        showMessage("Failed to join group. Please try again.", "error");
       } finally {
         setJoiningGroup(null);
       }
@@ -159,9 +198,12 @@ const FindGroups = ({ onNavigate }) => {
 
   if (loading) {
     return (
-      <div className="find-groups-loading">
-        <div className="loading-spinner"></div>
-        <p>Finding study groups...</p>
+      <div className="find-groups-container">
+        <div className="loading-state">
+          <div className="loading-spinner"></div>
+          <h2>Finding study groups...</h2>
+          <p>Please wait while we search for available groups</p>
+        </div>
       </div>
     );
   }
@@ -169,249 +211,277 @@ const FindGroups = ({ onNavigate }) => {
   return (
     <div className="find-groups-container">
       {/* Header */}
-      <div className="find-groups-header">
+      <header className="find-groups-header">
         <div className="header-content">
           <button className="back-button" onClick={() => onNavigate("home")}>
             <ArrowLeft size={20} />
-            <span>Back to Home</span>
+            Back to Home
           </button>
 
-          <div className="header-info">
-            <h1 className="page-title">Find Study Groups</h1>
+          <div className="page-title-section">
+            <h1>Find Study Groups</h1>
             <p className="page-subtitle">
               Discover and join study groups that match your interests and
               schedule
             </p>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Message Display */}
-      {message.text && (
-        <div className={`find-groups-message ${message.type}`}>
-          <span>{message.text}</span>
-        </div>
-      )}
-
-      {/* Search and Filter Bar */}
-      <div className="search-filter-bar">
-        <div className="search-container">
-          <Search size={20} className="search-icon" />
-          <input
-            type="text"
-            placeholder="Search by group name or concept..."
-            value={filters.search}
-            onChange={(e) => handleFilterChange("search", e.target.value)}
-            className="search-input"
-          />
-        </div>
-
-        <div className="filter-controls">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`filter-toggle ${
-              activeFilterCount > 0 ? "has-filters" : ""
-            }`}
-          >
-            <Filter size={16} />
-            <span>Filters</span>
-            {activeFilterCount > 0 && (
-              <span className="filter-count">{activeFilterCount}</span>
+      {/* Main Content */}
+      <div className="find-groups-content">
+        {/* Message Display */}
+        {message.text && (
+          <div className={`find-groups-message ${message.type}`}>
+            {message.type === "success" ? (
+              <AlertCircle size={20} />
+            ) : (
+              <X size={20} />
             )}
-            {showFilters ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
+            <span>{message.text}</span>
+            <button
+              onClick={() => setMessage({ text: "", type: "" })}
+              className="message-close"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
-          <button onClick={fetchGroups} className="refresh-button">
-            <RefreshCw size={16} />
-            <span>Refresh</span>
-          </button>
-        </div>
-      </div>
+        {/* Search and Filter Section */}
+        <div className="search-filters-section">
+          <div className="search-container">
+            <Search size={20} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Search by group name or concept..."
+              value={filters.search}
+              onChange={(e) => handleFilterChange("search", e.target.value)}
+              className="search-input"
+            />
+          </div>
 
-      {/* Filter Panel */}
-      {showFilters && (
-        <div className="filter-panel">
-          <div className="filter-grid">
-            {/* Concept Filter */}
+          <div className="filters-row">
             <div className="filter-group">
-              <label>Concept/Subject</label>
-              <input
-                type="text"
-                placeholder="e.g., React, Python, Math..."
-                value={filters.concept}
-                onChange={(e) => handleFilterChange("concept", e.target.value)}
-                className="filter-input"
-              />
-            </div>
-
-            {/* Level Filter */}
-            <div className="filter-group">
-              <label>Learning Level</label>
-              <select
-                value={filters.level}
-                onChange={(e) => handleFilterChange("level", e.target.value)}
-                className="filter-select"
-              >
-                <option value="">All Levels</option>
-                <option value="beginner">Beginner</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="advanced">Advanced</option>
-              </select>
-            </div>
-
-            {/* Time Commitment Filter */}
-            <div className="filter-group">
-              <label>Time Commitment</label>
-              <select
-                value={filters.time_commitment}
-                onChange={(e) =>
-                  handleFilterChange("time_commitment", e.target.value)
-                }
-                className="filter-select"
-              >
-                <option value="">Any Time</option>
-                <option value="10hrs/wk">10 hours/week</option>
-                <option value="15hrs/wk">15 hours/week</option>
-                <option value="20hrs/wk">20 hours/week</option>
-              </select>
-            </div>
-
-            {/* Clear Filters */}
-            <div className="filter-actions">
+              <Filter size={16} />
               <button
-                onClick={clearFilters}
-                className="clear-filters-btn"
-                disabled={activeFilterCount === 0}
+                onClick={() => setShowFilters(!showFilters)}
+                className={`filter-toggle ${showFilters ? "active" : ""} ${
+                  activeFilterCount > 0 ? "has-filters" : ""
+                }`}
               >
-                <X size={16} />
-                Clear All
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="filter-count">{activeFilterCount}</span>
+                )}
+                {showFilters ? (
+                  <ChevronUp size={16} />
+                ) : (
+                  <ChevronDown size={16} />
+                )}
               </button>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Results Header */}
-      <div className="results-header">
-        <div className="results-info">
-          <span className="results-count">
-            {filteredGroups.length} group
-            {filteredGroups.length !== 1 ? "s" : ""} found
-          </span>
-          {activeFilterCount > 0 && (
-            <span className="filter-applied">
-              (filtered from {groups.length} total)
-            </span>
+            <button onClick={fetchGroups} className="refresh-button">
+              <RefreshCw size={16} />
+              Refresh
+            </button>
+          </div>
+
+          {/* Expandable Filters */}
+          {showFilters && (
+            <div className="filters-expanded">
+              <div className="filter-row">
+                <div className="filter-item">
+                  <label>Level:</label>
+                  <select
+                    value={filters.level}
+                    onChange={(e) =>
+                      handleFilterChange("level", e.target.value)
+                    }
+                    className="filter-select"
+                  >
+                    <option value="">All Levels</option>
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
+                </div>
+
+                <div className="filter-item">
+                  <label>Time Commitment:</label>
+                  <select
+                    value={filters.time_commitment}
+                    onChange={(e) =>
+                      handleFilterChange("time_commitment", e.target.value)
+                    }
+                    className="filter-select"
+                  >
+                    <option value="">Any Time</option>
+                    <option value="10hrs/wk">10hrs/wk</option>
+                    <option value="15hrs/wk">15hrs/wk</option>
+                    <option value="20hrs/wk">20hrs/wk</option>
+                  </select>
+                </div>
+
+                <div className="filter-item">
+                  <label>Concept:</label>
+                  <input
+                    type="text"
+                    placeholder="Filter by concept..."
+                    value={filters.concept}
+                    onChange={(e) =>
+                      handleFilterChange("concept", e.target.value)
+                    }
+                    className="filter-select"
+                  />
+                </div>
+              </div>
+
+              {activeFilterCount > 0 && (
+                <div className="filter-actions">
+                  <button onClick={clearFilters} className="clear-filters-btn">
+                    <X size={16} />
+                    Clear All Filters
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
-        <div className="sort-controls">
-          <label>Sort by:</label>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="sort-select"
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="members">Most Members</option>
-            <option value="name">Name (A-Z)</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Groups Grid */}
-      <div className="groups-container">
-        {filteredGroups.length > 0 ? (
-          <div className={`groups-grid ${viewMode}`}>
-            {filteredGroups.map((group) => (
-              <div key={group.group_id} className="group-card">
-                <div className="group-card-header">
-                  <h3 className="group-title">{group.name}</h3>
-                  <span className="member-count">
-                    <Users size={14} />
-                    {group.member_count}
+        {/* Results Section */}
+        <div className="results-section">
+          <div className="results-header">
+            <div className="results-info">
+              <h2>Available Groups</h2>
+              <span className="results-count">
+                {filteredGroups.length} group
+                {filteredGroups.length !== 1 ? "s" : ""} found
+                {activeFilterCount > 0 && (
+                  <span className="filter-applied">
+                    {" "}
+                    (filtered from {groups.length} total)
                   </span>
-                </div>
+                )}
+              </span>
+            </div>
 
-                <div className="group-concept">
-                  <BookOpen size={16} />
-                  <span>{group.concept}</span>
-                </div>
-
-                <div className="group-details-row">
-                  <div className="group-detail-item">
-                    <TrendingUp size={14} />
-                    <span className={`level-badge ${group.level}`}>
-                      {group.level}
-                    </span>
-                  </div>
-
-                  <div className="group-detail-item">
-                    <Clock size={14} />
-                    <span>{group.time_commitment}</span>
-                  </div>
-                </div>
-
-                <div className="group-meta">
-                  <span className="created-date">
-                    Created {new Date(group.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-
-                <div className="group-actions">
-                  <button
-                    onClick={() => onNavigate("group-detail", group.group_id)}
-                    className="btn btn-secondary view-details-btn"
-                  >
-                    View Details
-                  </button>
-
-                  <button
-                    onClick={() => handleJoinGroup(group.group_id, group.name)}
-                    disabled={joiningGroup === group.group_id}
-                    className="btn btn-primary join-group-btn"
-                  >
-                    {joiningGroup === group.group_id ? (
-                      <>
-                        <div className="joining-spinner"></div>
-                        Joining...
-                      </>
-                    ) : (
-                      <>
-                        <Plus size={16} />
-                        Join Group
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="no-groups-found">
-            <Search size={48} />
-            <h3>No study groups found</h3>
-            <p>
-              {activeFilterCount > 0
-                ? "Try adjusting your filters to see more results"
-                : "Be the first to create a study group!"}
-            </p>
-            <div className="no-groups-actions">
-              {activeFilterCount > 0 && (
-                <button onClick={clearFilters} className="btn btn-secondary">
-                  Clear Filters
-                </button>
-              )}
-              <button
-                onClick={() => onNavigate("create-group")}
-                className="btn btn-primary"
+            <div className="sort-container">
+              <label>Sort by:</label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="sort-select"
               >
-                Create Study Group
-              </button>
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="members">Most Members</option>
+                <option value="name">Name (A-Z)</option>
+              </select>
             </div>
           </div>
-        )}
+
+          {/* Groups Grid */}
+          {filteredGroups.length > 0 ? (
+            <div className="groups-grid">
+              {filteredGroups.map((group) => (
+                <div key={group.group_id} className="group-card">
+                  <div className="group-header">
+                    <h3 className="group-name">{group.name}</h3>
+                    <p className="group-concept">{group.concept}</p>
+                  </div>
+
+                  <div className="group-details">
+                    <div className="detail-item">
+                      <TrendingUp size={16} />
+                      <span className={`level-badge ${group.level}`}>
+                        {group.level}
+                      </span>
+                    </div>
+
+                    <div className="detail-item">
+                      <Clock size={16} />
+                      <span>{group.time_commitment}</span>
+                    </div>
+
+                    <div className="detail-item">
+                      <Users size={16} />
+                      <span>
+                        {group.member_count || 1} member
+                        {(group.member_count || 1) !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+
+                    <div className="detail-item">
+                      <BookOpen size={16} />
+                      <span>
+                        Created{" "}
+                        {new Date(group.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="group-actions">
+                    <button
+                      onClick={() => onNavigate("group-detail", group.group_id)}
+                      className="view-button"
+                    >
+                      View Details
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        handleJoinGroup(group.group_id, group.name)
+                      }
+                      disabled={joiningGroup === group.group_id}
+                      className="join-button"
+                    >
+                      {joiningGroup === group.group_id ? (
+                        <>
+                          <div className="button-spinner"></div>
+                          Joining...
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={16} />
+                          Join Group
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-state-icon">
+                <Search size={48} />
+              </div>
+              <h3>No Study Groups Found</h3>
+              <p>
+                {activeFilterCount > 0
+                  ? "Try adjusting your filters to see more results, or create your own study group to get started."
+                  : "Be the first to create a study group and start your learning journey!"}
+              </p>
+              <div className="empty-actions">
+                {activeFilterCount > 0 && (
+                  <button onClick={clearFilters} className="secondary-button">
+                    <X size={16} />
+                    Clear Filters
+                  </button>
+                )}
+                <button
+                  onClick={() => onNavigate("create-group")}
+                  className="create-group-button"
+                >
+                  <Plus size={20} />
+                  Create Study Group
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

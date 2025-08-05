@@ -38,7 +38,6 @@ const SuperAdminDashboard = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("authToken");
-
       if (!token) {
         console.error("No auth token found");
         alert("Please sign in again");

@@ -10,6 +10,7 @@ import {
   Mail,
 } from "lucide-react";
 import { groupsAPI } from "../services/api";
+import "./CreateGroup.css";
 
 const CreateGroup = ({ onNavigate, onSuccess }) => {
   const [formData, setFormData] = useState({

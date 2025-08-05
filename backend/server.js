@@ -1387,6 +1387,80 @@ app.get("/api/stats", authenticateToken, async (req, res) => {
   }
 });
 
+const path = require("path");
+
+// Serve static files from React build directory
+if (process.env.NODE_ENV === "production") {
+  // Serve static files from the React app build directory
+  app.use(express.static(path.join(__dirname, "../build")));
+
+  // Catch-all handler: send back React's index.html for any non-API routes
+  app.get("/{*any}", (req, res) => {
+    // Only serve index.html for non-API routes
+    if (!req.path.startsWith("/api/")) {
+      res.sendFile(path.join(__dirname, "../build/index.html"));
+    } else {
+      // This should not happen if API routes are properly defined above
+      res.status(404).json({
+        success: false,
+        message: `API route ${req.method} ${req.originalUrl} not found`,
+      });
+    }
+  });
+} else {
+  // Development mode - just serve a simple message for non-API routes
+  app.get("/{*any}", (req, res) => {
+    if (!req.path.startsWith("/api/")) {
+      res.json({
+        message: "Development mode - React dev server should handle this route",
+        path: req.path,
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: `API route ${req.method} ${req.originalUrl} not found`,
+      });
+    }
+  });
+}
+
+app.use("/api", (req, res, next) => {
+  console.log(`🔍 API Request: ${req.method} ${req.originalUrl}`);
+  console.log(`🔍 Headers:`, {
+    "content-type": req.headers["content-type"],
+    authorization: req.headers["authorization"] ? "Bearer [TOKEN]" : "None",
+  });
+  console.log(`🔍 Body:`, req.body);
+  next();
+});
+
+// Add debugging specifically for admin routes
+app.use("/api/admin", (req, res, next) => {
+  console.log(`🔍 ADMIN Route Hit: ${req.method} ${req.originalUrl}`);
+  console.log(`🔍 User from JWT:`, req.user);
+  next();
+});
+
+// Test route to verify server is working
+app.get("/api/test", (req, res) => {
+  res.json({
+    success: true,
+    message: "Server is working correctly",
+    timestamp: new Date().toISOString(),
+    routes_working: true,
+  });
+});
+
+// Specific debugging for the problematic routes
+app.get("/api/admin/debug", authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    message: "Admin debug route working",
+    user: req.user,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // ========== ERROR HANDLING MIDDLEWARE ==========
 
 // 2. REPLACE that entire section with this:

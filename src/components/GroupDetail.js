@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+// import { useParams, useNavigate } from "react-router-dom";
 import {
   Users,
   BookOpen,
@@ -25,11 +25,11 @@ import {
   UserX,
   Eye,
 } from "lucide-react";
-// import "./GroupDetail.css";
+import "./GroupDetail.css";
 
-const GroupDetail = () => {
-  const { groupId } = useParams();
-  const navigate = useNavigate();
+const GroupDetail = ({ groupId, onNavigate }) => {
+  // const { groupId } = useParams();
+  // const navigate = useNavigate();
   const [group, setGroup] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -105,6 +105,18 @@ const GroupDetail = () => {
       console.error("Error fetching join requests:", error);
     }
     setLoadingJoinRequests(false);
+  };
+
+  const handleBackClick = () => {
+    // Try to go back in browser history first
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      // Fallback to dashboard if no history
+      if (onNavigate) {
+        onNavigate("dashboard");
+      }
+    }
   };
 
   const handleApproveJoinRequest = async (requestId) => {
@@ -275,15 +287,12 @@ const GroupDetail = () => {
     return (
       <div className="group-detail-container">
         <div className="error-state">
-          <AlertCircle size={48} />
-          <h2>Error Loading Group</h2>
+          <AlertCircle size={48} className="error-icon" />
+          <h2>Unable to Load Group</h2>
           <p>{error}</p>
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="btn btn-primary"
-          >
-            <ArrowLeft size={16} />
-            Back to Dashboard
+          <button onClick={handleBackClick} className="back-button">
+            <ArrowLeft size={20} />
+            Go Back
           </button>
         </div>
       </div>
@@ -297,11 +306,8 @@ const GroupDetail = () => {
           <AlertCircle size={48} />
           <h2>Group Not Found</h2>
           <p>The requested group could not be found.</p>
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="btn btn-primary"
-          >
-            <ArrowLeft size={16} />
+          <button onClick={handleBackClick} className="back-button">
+            <ArrowLeft size={20} />
             Back to Dashboard
           </button>
         </div>
@@ -313,21 +319,11 @@ const GroupDetail = () => {
     <div className="group-detail-container">
       {/* Header */}
       <div className="group-header">
-        <button onClick={() => navigate("/dashboard")} className="back-btn">
-          <ArrowLeft size={16} />
+        <button onClick={handleBackClick} className="back-button">
+          <ArrowLeft size={20} />
           Back to Dashboard
         </button>
-
-        <div className="group-title-section">
-          <div className="group-title-info">
-            <h1>{group.name}</h1>
-            <p className="group-concept">{group.concept}</p>
-            <div className="group-status-info">
-              {getStatusBadge(group.status)}
-              <span className="group-id">ID: {group.group_id}</span>
-            </div>
-          </div>
-        </div>
+        <h1>{group?.name}</h1>
       </div>
 
       {/* Status Messages */}
