@@ -13,6 +13,8 @@ import Home from "./components/Home";
 import CreateGroup from "./components/CreateGroup";
 import GroupDetail from "./components/GroupDetail";
 import FindGroups from "./components/FindGroups";
+import SuperAdminDashboard from "./components/SuperAdminDashboard";
+import UserDashboard from "./components/UserDashboard"; // Added import
 import "./App.css";
 
 function App() {
@@ -20,12 +22,21 @@ function App() {
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [message, setMessage] = useState({ text: "", type: "" });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
     // Check if user is already authenticated
     if (authUtils.isAuthenticated()) {
+      const userData = authUtils.getUser();
+      setUser(userData);
       setIsAuthenticated(true);
-      setCurrentPage("home");
+
+      // If user is super admin, redirect to admin dashboard
+      if (userData?.is_super_admin) {
+        setCurrentPage("admin-dashboard");
+      } else {
+        setCurrentPage("home");
+      }
     }
   }, []);
 
@@ -61,13 +72,17 @@ function App() {
         if (response.success) {
           // Store authentication data
           authUtils.setAuth(response.token, response.user);
-
+          setUser(response.user);
           setIsAuthenticated(true);
           showMessage(response.message, "success");
 
-          // Navigate to home page
+          // Navigate based on user role
           setTimeout(() => {
-            setCurrentPage("home");
+            if (response.user.is_super_admin) {
+              setCurrentPage("admin-dashboard");
+            } else {
+              setCurrentPage("home");
+            }
           }, 1000);
         }
       } catch (error) {
@@ -331,14 +346,21 @@ function App() {
   // Render appropriate component based on authentication and current page
   const renderCurrentPage = () => {
     if (isAuthenticated) {
-      if (currentPage === "home") {
+      if (currentPage === "admin-dashboard") {
+        return <SuperAdminDashboard onNavigate={handleNavigation} />;
+      } else if (currentPage === "home") {
         return <Home onNavigate={handleNavigation} />;
+      } else if (currentPage === "user-dashboard") {
+        return <UserDashboard onNavigate={handleNavigation} />;
       } else if (currentPage === "create-group") {
         return (
           <CreateGroup
             onNavigate={handleNavigation}
             onSuccess={() =>
-              showMessage("Study group created successfully!", "success")
+              showMessage(
+                "Study group created successfully and submitted for approval!",
+                "success"
+              )
             }
           />
         );
@@ -411,11 +433,15 @@ function App() {
           <div className="demo-card">
             <h3 className="demo-title">Demo Info</h3>
             <p className="demo-text">
-              Try signing in with: <strong>demo@example.com</strong> /{" "}
-              <strong>password123</strong>
+              <strong>Regular User:</strong> demo@example.com / password123
+            </p>
+            <p className="demo-text">
+              <strong>Super Admin:</strong> superadmin@example.com /
+              superadmin123
             </p>
             <p className="demo-small-text">
-              Full-stack app with real database authentication
+              Full-stack app with real database authentication and admin
+              controls
             </p>
           </div>
         </div>

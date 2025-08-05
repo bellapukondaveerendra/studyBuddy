@@ -17,6 +17,7 @@ const createUserTable = () => {
       user_id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
+      is_super_admin BOOLEAN DEFAULT FALSE,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
@@ -27,44 +28,60 @@ const createUserTable = () => {
       console.error("Error creating table:", err.message);
     } else {
       console.log("User table created or already exists");
-      // Insert demo user
-      insertDemoUser();
+      // Insert demo users
+      insertDemoUsers();
     }
   });
 };
 
-// Insert demo user
-const insertDemoUser = async () => {
-  const demoEmail = "demo@example.com";
-  const demoPassword = "password123";
+// Insert demo users including super admin
+const insertDemoUsers = async () => {
+  const demoUsers = [
+    {
+      email: "demo@example.com",
+      password: "password123",
+      is_super_admin: false,
+    },
+    {
+      email: "superadmin@example.com",
+      password: "superadmin123",
+      is_super_admin: true,
+    },
+  ];
 
-  // Check if demo user already exists
-  db.get(
-    "SELECT email FROM user_login_data_table WHERE email = ?",
-    [demoEmail],
-    async (err, row) => {
-      if (err) {
-        console.error("Error checking demo user:", err.message);
-        return;
-      }
+  for (const user of demoUsers) {
+    // Check if user already exists
+    db.get(
+      "SELECT email FROM user_login_data_table WHERE email = ?",
+      [user.email],
+      async (err, row) => {
+        if (err) {
+          console.error(`Error checking ${user.email}:`, err.message);
+          return;
+        }
 
-      if (!row) {
-        // Demo user doesn't exist, create it
-        const hashedPassword = await bcrypt.hash(demoPassword, 10);
-        db.run(
-          "INSERT INTO user_login_data_table (email, password) VALUES (?, ?)",
-          [demoEmail, hashedPassword],
-          (err) => {
-            if (err) {
-              console.error("Error inserting demo user:", err.message);
-            } else {
-              console.log("Demo user created: demo@example.com / password123");
+        if (!row) {
+          // User doesn't exist, create it
+          const hashedPassword = await bcrypt.hash(user.password, 10);
+          db.run(
+            "INSERT INTO user_login_data_table (email, password, is_super_admin) VALUES (?, ?, ?)",
+            [user.email, hashedPassword, user.is_super_admin],
+            (err) => {
+              if (err) {
+                console.error(`Error inserting ${user.email}:`, err.message);
+              } else {
+                console.log(
+                  `${
+                    user.is_super_admin ? "Super Admin" : "Demo User"
+                  } created: ${user.email} / ${user.password}`
+                );
+              }
             }
-          }
-        );
+          );
+        }
       }
-    }
-  );
+    );
+  }
 };
 
 // Database operations
@@ -75,8 +92,8 @@ const dbOperations = {
       try {
         const hashedPassword = await bcrypt.hash(password, 10);
         db.run(
-          "INSERT INTO user_login_data_table (email, password) VALUES (?, ?)",
-          [email, hashedPassword],
+          "INSERT INTO user_login_data_table (email, password, is_super_admin) VALUES (?, ?, ?)",
+          [email, hashedPassword, false], // New users are not super admin by default
           function (err) {
             if (err) {
               if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
@@ -91,6 +108,7 @@ const dbOperations = {
               resolve({
                 user_id: this.lastID,
                 email: email,
+                is_super_admin: false,
                 message: "User created successfully",
               });
             }
@@ -106,7 +124,7 @@ const dbOperations = {
   authenticateUser: (email, password) => {
     return new Promise((resolve, reject) => {
       db.get(
-        "SELECT user_id, email, password FROM user_login_data_table WHERE email = ?",
+        "SELECT user_id, email, password, is_super_admin FROM user_login_data_table WHERE email = ?",
         [email],
         async (err, row) => {
           if (err) {
@@ -128,6 +146,7 @@ const dbOperations = {
               resolve({
                 user_id: row.user_id,
                 email: row.email,
+                is_super_admin: row.is_super_admin,
                 message: "Authentication successful",
               });
             } else {
@@ -151,8 +170,27 @@ const dbOperations = {
   getUserById: (userId) => {
     return new Promise((resolve, reject) => {
       db.get(
-        "SELECT user_id, email, created_at FROM user_login_data_table WHERE user_id = ?",
+        "SELECT user_id, email, is_super_admin, created_at FROM user_login_data_table WHERE user_id = ?",
         [userId],
+        (err, row) => {
+          if (err) {
+            reject({ message: "Database error", code: "DB_ERROR" });
+          } else if (row) {
+            resolve(row);
+          } else {
+            reject({ message: "User not found", code: "USER_NOT_FOUND" });
+          }
+        }
+      );
+    });
+  },
+
+  // Get user by email - MISSING FUNCTION ADDED
+  getUserByEmail: (email) => {
+    return new Promise((resolve, reject) => {
+      db.get(
+        "SELECT user_id, email, is_super_admin, created_at FROM user_login_data_table WHERE email = ?",
+        [email],
         (err, row) => {
           if (err) {
             reject({ message: "Database error", code: "DB_ERROR" });
@@ -170,13 +208,54 @@ const dbOperations = {
   getAllUsers: () => {
     return new Promise((resolve, reject) => {
       db.all(
-        "SELECT user_id, email, created_at FROM user_login_data_table ORDER BY created_at DESC",
+        "SELECT user_id, email, is_super_admin, created_at FROM user_login_data_table ORDER BY created_at DESC",
         [],
         (err, rows) => {
           if (err) {
             reject({ message: "Database error", code: "DB_ERROR" });
           } else {
             resolve(rows);
+          }
+        }
+      );
+    });
+  },
+
+  // Check if user is super admin
+  isSuperAdmin: (userId) => {
+    return new Promise((resolve, reject) => {
+      db.get(
+        "SELECT is_super_admin FROM user_login_data_table WHERE user_id = ?",
+        [userId],
+        (err, row) => {
+          if (err) {
+            reject({ message: "Database error", code: "DB_ERROR" });
+          } else if (row) {
+            resolve(row.is_super_admin === 1); // SQLite stores boolean as 1/0
+          } else {
+            reject({ message: "User not found", code: "USER_NOT_FOUND" });
+          }
+        }
+      );
+    });
+  },
+
+  // Promote user to super admin (only existing super admins can do this)
+  promoteToSuperAdmin: (userId) => {
+    return new Promise((resolve, reject) => {
+      db.run(
+        "UPDATE user_login_data_table SET is_super_admin = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+        [userId],
+        function (err) {
+          if (err) {
+            reject({ message: "Database error", code: "DB_ERROR" });
+          } else if (this.changes === 0) {
+            reject({ message: "User not found", code: "USER_NOT_FOUND" });
+          } else {
+            resolve({
+              success: true,
+              message: "User promoted to super admin successfully",
+            });
           }
         }
       );

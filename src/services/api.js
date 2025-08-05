@@ -1,17 +1,18 @@
 import axios from "axios";
 
-// Create axios instance with base URL
+// Create axios instance with base configuration
 const api = axios.create({
   baseURL: "http://localhost:5000/api",
+  timeout: 10000,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// Add token to requests if available
+// Add request interceptor to include auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("studybuddy_token");
+    const token = localStorage.getItem("authToken");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -22,21 +23,21 @@ api.interceptors.request.use(
   }
 );
 
-// Handle response errors
+// Add response interceptor for better error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       // Token expired or invalid
-      localStorage.removeItem("studybuddy_token");
-      localStorage.removeItem("studybuddy_user");
-      window.location.href = "/";
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("userData");
+      window.location.href = "/signin";
     }
     return Promise.reject(error);
   }
 );
 
-// Authentication API calls
+// Authentication API
 export const authAPI = {
   signup: async (email, password, confirmPassword) => {
     const response = await api.post("/auth/signup", {
@@ -55,43 +56,42 @@ export const authAPI = {
     return response.data;
   },
 
+  getProfile: async () => {
+    const response = await api.get("/auth/profile");
+    return response.data;
+  },
+
   verifyToken: async () => {
     const response = await api.post("/auth/verify");
     return response.data;
   },
 
-  getProfile: async () => {
-    const response = await api.get("/auth/profile");
+  checkEmail: async (email) => {
+    const response = await api.post("/auth/check-email", { email });
     return response.data;
   },
 };
 
-// Study Groups API calls
+// Study Groups API
 export const groupsAPI = {
   createGroup: async (groupData) => {
     const response = await api.post("/groups/create", groupData);
     return response.data;
   },
 
-  findGroups: async (filters = {}) => {
-    const params = new URLSearchParams();
-    Object.keys(filters).forEach((key) => {
-      if (filters[key]) {
-        params.append(key, filters[key]);
-      }
-    });
-
-    const response = await api.get(`/findGroups?${params}`);
+  getAllGroups: async () => {
+    const response = await api.get("/groups");
     return response.data;
   },
 
+  // FIXED: Changed from /my-groups to /groups/my-groups to match server route
   getMyGroups: async () => {
-    const response = await api.get("/my-groups");
+    const response = await api.get("/groups/my-groups");
     return response.data;
   },
 
-  joinGroup: async (groupId) => {
-    const response = await api.post(`/groups/join/${groupId}`);
+  joinGroup: async (groupId, message = "") => {
+    const response = await api.post(`/groups/${groupId}/join`, { message });
     return response.data;
   },
 
@@ -100,12 +100,35 @@ export const groupsAPI = {
     return response.data;
   },
 
-  // New Group Detail APIs
-  getCompleteGroupDetails: async (groupId) => {
-    const response = await api.get(`/groups/${groupId}/details`);
+  // Join Request APIs
+  getJoinRequests: async (groupId) => {
+    const response = await api.get(`/groups/${groupId}/join-requests`);
     return response.data;
   },
 
+  approveJoinRequest: async (requestId) => {
+    const response = await api.post(
+      `/groups/join-requests/${requestId}/approve`
+    );
+    return response.data;
+  },
+
+  rejectJoinRequest: async (requestId, rejectionReason = "") => {
+    const response = await api.post(
+      `/groups/join-requests/${requestId}/reject`,
+      {
+        rejection_reason: rejectionReason,
+      }
+    );
+    return response.data;
+  },
+
+  getJoinStatus: async (groupId) => {
+    const response = await api.get(`/groups/${groupId}/join-status`);
+    return response.data;
+  },
+
+  // Group Management APIs
   generateMeetingLink: async (groupId) => {
     const response = await api.post(`/groups/${groupId}/meeting-link`);
     return response.data;
@@ -113,6 +136,22 @@ export const groupsAPI = {
 
   removeMember: async (groupId, memberId) => {
     const response = await api.delete(`/groups/${groupId}/members/${memberId}`);
+    return response.data;
+  },
+
+  // Invitation APIs
+  sendInvitation: async (groupId, email) => {
+    const response = await api.post(`/groups/${groupId}/invite`, { email });
+    return response.data;
+  },
+
+  acceptInvitation: async (token) => {
+    const response = await api.post(`/groups/invitations/${token}/accept`);
+    return response.data;
+  },
+
+  getInvitations: async (groupId) => {
+    const response = await api.get(`/groups/${groupId}/invitations`);
     return response.data;
   },
 
@@ -134,12 +173,12 @@ export const groupsAPI = {
 
   // Discussion APIs
   getDiscussion: async (groupId) => {
-    const response = await api.get(`/groups/${groupId}/discussion`);
+    const response = await api.get(`/groups/${groupId}/discussions`);
     return response.data;
   },
 
   addMessage: async (groupId, message) => {
-    const response = await api.post(`/groups/${groupId}/discussion/messages`, {
+    const response = await api.post(`/groups/${groupId}/discussions/messages`, {
       message,
     });
     return response.data;
@@ -155,59 +194,92 @@ export const groupsAPI = {
     const response = await api.put(`/groups/${groupId}/notes`, { notes });
     return response.data;
   },
+};
 
-  // Invitation related APIs
-  checkEmailExists: async (email) => {
-    const response = await api.post("/users/check-email", { email });
+// Super Admin API
+export const adminAPI = {
+  getAllGroups: async () => {
+    const response = await api.get("/admin/groups");
     return response.data;
   },
 
-  getGroupInvitations: async (groupId) => {
-    const response = await api.get(`/groups/${groupId}/invitations`);
+  getAllUsers: async () => {
+    const response = await api.get("/admin/users");
     return response.data;
   },
-  // Invite member to existing group (new function needed)
-  inviteMember: async (groupId, email) => {
-    const response = await api.post(`/groups/${groupId}/invite`, {
-      member_emails: [email],
+
+  approveGroup: async (groupId) => {
+    const response = await api.post(`/admin/groups/${groupId}/approve`);
+    return response.data;
+  },
+
+  rejectGroup: async (groupId, rejectionReason = "") => {
+    const response = await api.post(`/admin/groups/${groupId}/reject`, {
+      rejection_reason: rejectionReason,
     });
     return response.data;
   },
-  // Add existing user directly to group (if this doesn't exist)
-  addMemberDirectly: async (groupId, userId) => {
-    const response = await api.post(`/groups/${groupId}/add-member`, {
-      user_id: userId,
-    });
+
+  deleteGroup: async (groupId) => {
+    const response = await api.delete(`/admin/groups/${groupId}`);
     return response.data;
   },
-  // Get pending invitations for a group (admin only)
-  getGroupInvitations: async (groupId) => {
-    const response = await api.get(`/groups/${groupId}/invitations`);
+
+  promoteUser: async (userId) => {
+    const response = await api.post(`/admin/users/${userId}/promote`);
     return response.data;
   },
 };
 
-// Utility functions
+// Authentication utilities
 export const authUtils = {
+  // Check if user is authenticated
   isAuthenticated: () => {
-    const token = localStorage.getItem("studybuddy_token");
-    return !!token;
+    const token = localStorage.getItem("authToken");
+    const userData = localStorage.getItem("userData");
+    return !!(token && userData);
   },
 
+  // Get stored user data
   getUser: () => {
-    const user = localStorage.getItem("studybuddy_user");
-    return user ? JSON.parse(user) : null;
+    const userData = localStorage.getItem("userData");
+    return userData ? JSON.parse(userData) : null;
   },
 
+  // Get stored auth token
+  getToken: () => {
+    return localStorage.getItem("authToken");
+  },
+
+  // Store authentication data
   setAuth: (token, user) => {
-    localStorage.setItem("studybuddy_token", token);
-    localStorage.setItem("studybuddy_user", JSON.stringify(user));
+    localStorage.setItem("authToken", token);
+    localStorage.setItem("userData", JSON.stringify(user));
   },
 
+  // Clear authentication data
   clearAuth: () => {
-    localStorage.removeItem("studybuddy_token");
-    localStorage.removeItem("studybuddy_user");
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("userData");
+  },
+
+  // Check if user is super admin
+  isSuperAdmin: () => {
+    const user = authUtils.getUser();
+    return user?.is_super_admin === true;
   },
 };
 
+// Error handling helper
+export const handleAPIError = (error, defaultMessage = "An error occurred") => {
+  if (error.response?.data?.message) {
+    return error.response.data.message;
+  } else if (error.message) {
+    return error.message;
+  } else {
+    return defaultMessage;
+  }
+};
+
+// Export default api instance for custom requests
 export default api;
