@@ -110,7 +110,7 @@ const Home = ({ onNavigate }) => {
               </button>
             )}
             <button
-              onClick={() => onNavigate("dashboard")}
+              onClick={() => onNavigate("user-dashboard")}
               className="header-button dashboard-button"
             >
               <BarChart3 size={20} />
@@ -196,7 +196,7 @@ const Home = ({ onNavigate }) => {
 
           <div
             className="action-card groups-action"
-            onClick={() => onNavigate("dashboard")}
+            onClick={() => onNavigate("user-dashboard")}
           >
             <div className="action-icon">
               <Folder size={32} />
@@ -214,7 +214,7 @@ const Home = ({ onNavigate }) => {
         <div className="section-header">
           <h2 className="section-title">Recent Groups</h2>
           <button
-            onClick={() => onNavigate("dashboard")}
+            onClick={() => onNavigate("user-dashboard")}
             className="view-all-button"
           >
             View All Groups
