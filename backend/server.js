@@ -67,16 +67,42 @@ const authenticateSuperAdmin = async (req, res, next) => {
 // Sign Up Route
 app.post("/api/auth/signup", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const {
+      email,
+      password,
+      confirmPassword,
+      firstName,
+      lastName,
+      dateOfBirth,
+      phoneNumber,
+    } = req.body;
 
-    // Validation
-    if (!email || !password) {
+    // Enhanced validation
+    if (
+      !email ||
+      !password ||
+      !confirmPassword ||
+      !firstName ||
+      !lastName ||
+      !dateOfBirth
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Email and password are required",
+        message:
+          "Email, password, first name, last name, and date of birth are required",
       });
     }
 
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address",
+      });
+    }
+
+    // Password validation
     if (password.length < 6) {
       return res.status(400).json({
         success: false,
@@ -84,26 +110,99 @@ app.post("/api/auth/signup", async (req, res) => {
       });
     }
 
-    // Create user
-    const result = await dbOperations.createUser(email, password);
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Passwords do not match",
+      });
+    }
+
+    // Name validation
+    if (firstName.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "First name must be at least 2 characters long",
+      });
+    }
+
+    if (lastName.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Last name must be at least 2 characters long",
+      });
+    }
+
+    // Date of birth validation
+    const birthDate = new Date(dateOfBirth);
+    const today = new Date();
+    const age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      age--;
+    }
+
+    if (age < 13) {
+      return res.status(400).json({
+        success: false,
+        message: "You must be at least 13 years old to create an account",
+      });
+    }
+
+    if (age > 120) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid date of birth",
+      });
+    }
+
+    // Phone number validation (optional field)
+    if (phoneNumber && phoneNumber.trim()) {
+      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+      if (!phoneRegex.test(phoneNumber.replace(/[\s\-\(\)]/g, ""))) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide a valid phone number",
+        });
+      }
+    }
+
+    // Create user with additional fields
+    const result = await dbOperations.createUser(
+      email.toLowerCase().trim(),
+      password,
+      firstName.trim(),
+      lastName.trim(),
+      dateOfBirth,
+      phoneNumber ? phoneNumber.trim() : null
+    );
 
     // Generate JWT token
     const token = jwt.sign(
       {
         userId: result.user_id,
         email: result.email,
+        firstName: result.first_name,
+        lastName: result.last_name,
         isSuperAdmin: result.is_super_admin,
       },
       JWT_SECRET,
       { expiresIn: "24h" }
     );
 
-    res.status(201).json({
+    res.json({
       success: true,
-      message: `Account created successfully! Welcome, ${email}`,
+      message: `Welcome, ${result.first_name}! Your account has been created successfully.`,
       user: {
         user_id: result.user_id,
         email: result.email,
+        first_name: result.first_name,
+        last_name: result.last_name,
+        date_of_birth: result.date_of_birth,
+        phone_number: result.phone_number,
         is_super_admin: result.is_super_admin,
       },
       token,

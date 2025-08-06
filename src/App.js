@@ -7,6 +7,8 @@ import {
   User,
   CheckCircle,
   XCircle,
+  Calendar,
+  Phone,
 } from "lucide-react";
 import { authAPI, authUtils } from "./services/api";
 import Home from "./components/Home";
@@ -176,11 +178,16 @@ function App() {
   };
 
   // Sign Up Component
+  // Updated SignUp Component for App.js
   const SignUp = () => {
     const [formData, setFormData] = useState({
       email: "",
       password: "",
       confirmPassword: "",
+      firstName: "",
+      lastName: "",
+      dateOfBirth: "",
+      phoneNumber: "",
     });
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -190,6 +197,21 @@ function App() {
       setMessage({ text: "", type: "" });
 
       // Client-side validation
+      if (!formData.firstName.trim()) {
+        showMessage("First name is required", "error");
+        return;
+      }
+
+      if (!formData.lastName.trim()) {
+        showMessage("Last name is required", "error");
+        return;
+      }
+
+      if (!formData.dateOfBirth) {
+        showMessage("Date of birth is required", "error");
+        return;
+      }
+
       if (formData.password !== formData.confirmPassword) {
         showMessage("Passwords do not match", "error");
         return;
@@ -200,13 +222,38 @@ function App() {
         return;
       }
 
+      // Age validation
+      const birthDate = new Date(formData.dateOfBirth);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+
+      if (
+        monthDiff < 0 ||
+        (monthDiff === 0 && today.getDate() < birthDate.getDate())
+      ) {
+        age--;
+      }
+
+      if (age < 13) {
+        showMessage(
+          "You must be at least 13 years old to create an account",
+          "error"
+        );
+        return;
+      }
+
       setLoading(true);
 
       try {
         const response = await authAPI.signup(
           formData.email,
           formData.password,
-          formData.confirmPassword
+          formData.confirmPassword,
+          formData.firstName,
+          formData.lastName,
+          formData.dateOfBirth,
+          formData.phoneNumber
         );
 
         if (response.success) {
@@ -242,6 +289,63 @@ function App() {
           </div>
 
           <div className="form-container">
+            {/* First Name */}
+            <div className="input-group">
+              <label className="input-label">First Name</label>
+              <div className="input-container">
+                <User size={20} className="input-icon-left" />
+                <input
+                  type="text"
+                  required
+                  value={formData.firstName}
+                  onChange={(e) =>
+                    setFormData({ ...formData, firstName: e.target.value })
+                  }
+                  className="auth-input"
+                  placeholder="Enter your first name"
+                  maxLength="50"
+                />
+              </div>
+            </div>
+
+            {/* Last Name */}
+            <div className="input-group">
+              <label className="input-label">Last Name</label>
+              <div className="input-container">
+                <User size={20} className="input-icon-left" />
+                <input
+                  type="text"
+                  required
+                  value={formData.lastName}
+                  onChange={(e) =>
+                    setFormData({ ...formData, lastName: e.target.value })
+                  }
+                  className="auth-input"
+                  placeholder="Enter your last name"
+                  maxLength="50"
+                />
+              </div>
+            </div>
+
+            {/* Date of Birth */}
+            <div className="input-group">
+              <label className="input-label">Date of Birth</label>
+              <div className="input-container">
+                <Calendar size={20} className="input-icon-left" />
+                <input
+                  type="date"
+                  required
+                  value={formData.dateOfBirth}
+                  onChange={(e) =>
+                    setFormData({ ...formData, dateOfBirth: e.target.value })
+                  }
+                  className="auth-input"
+                  max={new Date().toISOString().split("T")[0]} // Prevent future dates
+                />
+              </div>
+            </div>
+
+            {/* Email Address */}
             <div className="input-group">
               <label className="input-label">Email Address</label>
               <div className="input-container">
@@ -259,6 +363,24 @@ function App() {
               </div>
             </div>
 
+            {/* Phone Number (Optional) */}
+            <div className="input-group">
+              <label className="input-label">Phone Number (Optional)</label>
+              <div className="input-container">
+                <Phone size={20} className="input-icon-left" />
+                <input
+                  type="tel"
+                  value={formData.phoneNumber}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phoneNumber: e.target.value })
+                  }
+                  className="auth-input"
+                  placeholder="Enter your phone number"
+                />
+              </div>
+            </div>
+
+            {/* Password */}
             <div className="input-group">
               <label className="input-label">Password</label>
               <div className="input-container">
@@ -284,6 +406,7 @@ function App() {
               </div>
             </div>
 
+            {/* Confirm Password */}
             <div className="input-group">
               <label className="input-label">Confirm Password</label>
               <div className="input-container">

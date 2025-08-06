@@ -39,11 +39,23 @@ api.interceptors.response.use(
 
 // Authentication API
 export const authAPI = {
-  signup: async (email, password, confirmPassword) => {
+  signup: async (
+    email,
+    password,
+    confirmPassword,
+    firstName,
+    lastName,
+    dateOfBirth,
+    phoneNumber = ""
+  ) => {
     const response = await api.post("/auth/signup", {
       email,
       password,
       confirmPassword,
+      firstName,
+      lastName,
+      dateOfBirth,
+      phoneNumber,
     });
     return response.data;
   },
@@ -63,11 +75,6 @@ export const authAPI = {
 
   verifyToken: async () => {
     const response = await api.post("/auth/verify");
-    return response.data;
-  },
-
-  checkEmail: async (email) => {
-    const response = await api.post("/auth/check-email", { email });
     return response.data;
   },
 };
