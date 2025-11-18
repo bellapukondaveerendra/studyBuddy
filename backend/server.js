@@ -167,6 +167,123 @@ app.post("/api/auth/signup", async (req, res) => {
   }
 });
 
+
+// ========== EMAIL VERIFICATION ROUTES ==========
+
+// Confirm email with verification code
+app.post("/api/auth/confirm", async (req, res) => {
+  try {
+    const { email, code } = req.body;
+
+    if (!email || !code) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and verification code are required",
+      });
+    }
+
+    const { ConfirmSignUpCommand } = require("@aws-sdk/client-cognito-identity-provider");
+    const { cognitoClient, computeSecretHash } = require("./services/cognito");
+    const CLIENT_ID = process.env.COGNITO_CLIENT_ID;
+
+    const params = {
+      ClientId: CLIENT_ID,
+      Username: email,
+      ConfirmationCode: code,
+      SecretHash: computeSecretHash(email),
+    };
+
+    const command = new ConfirmSignUpCommand(params);
+    await cognitoClient.send(command);
+
+    res.json({
+      success: true,
+      message: "Email verified successfully! You can now sign in.",
+    });
+  } catch (error) {
+    console.error("Confirm error:", error);
+
+    if (error.name === "CodeMismatchException") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid verification code. Please try again.",
+      });
+    }
+
+    if (error.name === "ExpiredCodeException") {
+      return res.status(400).json({
+        success: false,
+        message: "Verification code expired. Please request a new one.",
+      });
+    }
+
+    if (error.name === "NotAuthorizedException") {
+      return res.status(400).json({
+        success: false,
+        message: "User is already confirmed or code is invalid.",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to verify email. Please try again.",
+    });
+  }
+});
+
+// Resend verification code
+app.post("/api/auth/resend-code", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const { ResendConfirmationCodeCommand } = require("@aws-sdk/client-cognito-identity-provider");
+    const { cognitoClient, computeSecretHash } = require("./services/cognito");
+    const CLIENT_ID = process.env.COGNITO_CLIENT_ID;
+
+    const params = {
+      ClientId: CLIENT_ID,
+      Username: email,
+      SecretHash: computeSecretHash(email),
+    };
+
+    const command = new ResendConfirmationCodeCommand(params);
+    await cognitoClient.send(command);
+
+    res.json({
+      success: true,
+      message: "Verification code sent! Check your email.",
+    });
+  } catch (error) {
+    console.error("Resend code error:", error);
+
+    if (error.name === "LimitExceededException") {
+      return res.status(429).json({
+        success: false,
+        message: "Too many requests. Please wait a few minutes and try again.",
+      });
+    }
+
+    if (error.name === "InvalidParameterException") {
+      return res.status(400).json({
+        success: false,
+        message: "User is already confirmed or doesn't exist.",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to resend code. Please try again.",
+    });
+  }
+});
+
 app.post("/api/auth/signin", async (req, res) => {
   console.log("🔑 Signin request");
   try {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import VerifyEmail from "./components/VerifyEmail";
 import {
   Eye,
   EyeOff,
@@ -192,6 +193,8 @@ function App() {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [needsVerification, setNeedsVerification] = useState(false); // NEW
+    const [signupEmail, setSignupEmail] = useState(""); // NEW
 
     const handleSubmit = async () => {
       setMessage({ text: "", type: "" });
@@ -257,16 +260,13 @@ function App() {
         );
 
         if (response.success) {
+          // NEW: Instead of auto sign in, show verification page
+          setSignupEmail(formData.email);
+          setNeedsVerification(true);
           showMessage(
-            "Account created successfully! You can now sign in.",
+            "Account created! Please check your email for verification code.",
             "success"
           );
-
-          // Auto switch to sign in after successful signup
-          setTimeout(() => {
-            setCurrentPage("signin");
-            setMessage({ text: "", type: "" });
-          }, 2000);
         }
       } catch (error) {
         const errorMessage =
@@ -277,6 +277,25 @@ function App() {
       }
     };
 
+    // NEW: If user needs to verify, show verification component
+  if (needsVerification) {
+    return (
+      <VerifyEmail
+        email={signupEmail}
+        onSuccess={() => {
+          showMessage("Email verified! You can now sign in.", "success");
+          setTimeout(() => {
+            setCurrentPage("signin");
+            setNeedsVerification(false);
+          }, 2000);
+        }}
+        onBackToSignin={() => {
+          setCurrentPage("signin");
+          setNeedsVerification(false);
+        }}
+      />
+    );
+  }
     return (
       <div className="auth-container signup-bg">
         <div className="auth-card">

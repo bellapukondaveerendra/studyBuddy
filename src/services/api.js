@@ -71,6 +71,22 @@ export const authAPI = {
     const response = await api.post("/auth/check-email", { email });
     return response.data;
   },
+  // Confirm email with verification code
+  confirmEmail: async (email, code) => {
+    const response = await api.post("/auth/confirm", {
+      email,
+      code,
+    });
+    return response.data;
+  },
+
+  // Resend verification code
+  resendCode: async (email) => {
+    const response = await api.post("/auth/resend-code", {
+      email,
+    });
+    return response.data;
+  },
 };
 
 // Groups API
