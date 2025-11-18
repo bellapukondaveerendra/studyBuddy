@@ -1,4 +1,6 @@
-// backend/server.js - AWS Migrated Version
+
+require('dotenv').config();
+
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
@@ -37,6 +39,7 @@ const authenticateToken = async (req, res, next) => {
     };
     next();
   } catch (error) {
+    console.error("❌ Authentication error:", error);
     return res.status(403).json({
       success: false,
       message: "Invalid or expired token",
@@ -47,15 +50,22 @@ const authenticateToken = async (req, res, next) => {
 // Super Admin middleware
 const authenticateSuperAdmin = async (req, res, next) => {
   try {
+    console.log("🔍 Checking super admin for user:", req.user.email);
     const isSuperAdmin = await cognitoService.isSuperAdmin(req.user.userId);
+    console.log("🔍 Is super admin:", isSuperAdmin);
+    
     if (!isSuperAdmin) {
+      console.log("❌ User is not super admin");
       return res.status(403).json({
         success: false,
         message: "Super admin access required",
       });
     }
+    
+    console.log("✅ Super admin check passed");
     next();
   } catch (error) {
+    console.error("❌ Super admin check error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to verify super admin status: " + error.message,
@@ -246,17 +256,25 @@ app.post("/api/auth/check-email", authenticateToken, async (req, res) => {
 // ========== SUPER ADMIN ROUTES ==========
 
 app.get("/api/admin/groups", authenticateToken, authenticateSuperAdmin, async (req, res) => {
+  console.log("📋 Admin groups route hit");
   try {
+    console.log("🔍 Fetching all groups for super admin...");
     const groups = await dynamoService.getAllGroupsForSuperAdmin();
+    console.log(`✅ Found ${groups.length} groups`);
+    
+    const pendingCount = await dynamoService.getPendingGroupApprovalsCount();
+    console.log(`✅ Found ${pendingCount} pending groups`);
+    
     res.json({
       success: true,
       groups: groups,
+      pending_count: pendingCount,
     });
   } catch (error) {
-    console.error("Get admin groups error:", error);
+    console.error("❌ Get admin groups error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch groups",
+      message: "Failed to fetch groups: " + error.message,
     });
   }
 });
@@ -320,17 +338,21 @@ app.delete("/api/admin/groups/:group_id", authenticateToken, authenticateSuperAd
 });
 
 app.get("/api/admin/users", authenticateToken, authenticateSuperAdmin, async (req, res) => {
+  console.log("📋 Admin users route hit");
   try {
+    console.log("🔍 Fetching all users from Cognito...");
     const users = await cognitoService.getAllUsers();
+    console.log(`✅ Found ${users.length} users`);
+    
     res.json({
       success: true,
       users: users,
     });
   } catch (error) {
-    console.error("Get users error:", error);
+    console.error("❌ Get users error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch users",
+      message: "Failed to fetch users: " + error.message,
     });
   }
 });
@@ -353,8 +375,7 @@ app.post("/api/admin/users/:user_id/promote", authenticateToken, authenticateSup
   }
 });
 
-
-//MAIL TESTING
+// ========== EMAIL TESTING ROUTE ==========
 
 app.get("/api/test-email", authenticateToken, async (req, res) => {
   try {
@@ -716,7 +737,7 @@ app.get("/api/health", (req, res) => {
       cognito: "enabled",
       dynamodb: "enabled",
       s3: "enabled",
-      sns: "enabled",
+      ses: "enabled",
     },
   });
 });
@@ -764,6 +785,7 @@ if (process.env.NODE_ENV === "production") {
 
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/")) {
+    console.log(`❌ 404 - Route not found: ${req.method} ${req.path}`);
     res.status(404).json({
       success: false,
       message: `Route ${req.method} ${req.originalUrl} not found`,
@@ -808,9 +830,13 @@ const server = app.listen(PORT, () => {
   console.log(`   ✅ Cognito: User Authentication`);
   console.log(`   ✅ DynamoDB: Data Storage`);
   console.log(`   ✅ S3: File Storage`);
-  console.log(`   ✅ SNS: Email Notifications`);
+  console.log(`   ✅ SES: Email Notifications`);
   console.log(`📝 API Version: 3.0.0-AWS`);
   console.log(`🌟 Migration Complete - All services running on AWS!`);
+  console.log(`\n📋 Available Routes:`);
+  console.log(`   Auth: /api/auth/signin, /api/auth/signup`);
+  console.log(`   Admin: /api/admin/groups, /api/admin/users`);
+  console.log(`   Groups: /api/groups, /api/groups/my-groups`);
 });
 
 module.exports = { app, server };

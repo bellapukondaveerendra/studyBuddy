@@ -1,4 +1,6 @@
-// backend/services/cognito.js
+
+require("dotenv").config();
+// backend/services/cognito.js - UPDATED VERSION
 const {
   CognitoIdentityProviderClient,
   SignUpCommand,
@@ -19,14 +21,21 @@ const cognitoClient = new CognitoIdentityProviderClient({
 
 const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID;
 const CLIENT_ID = process.env.COGNITO_CLIENT_ID;
+const CLIENT_SECRET = process.env.COGNITO_CLIENT_SECRET;
+
+// Super Admin emails - HARDCODED LIST
+const SUPER_ADMIN_EMAILS = [
+  "ccproj2025@gmail.com",
+  "superadmin@studybuddy.com",
+  // Add more super admin emails here
+];
 
 // Helper function to compute secret hash
 const computeSecretHash = (username) => {
-  const secretKey = process.env.COGNITO_CLIENT_SECRET;
-  if (!secretKey) return undefined;
+  if (!CLIENT_SECRET) return undefined;
   
   return crypto
-    .createHmac("SHA256", secretKey)
+    .createHmac("SHA256", CLIENT_SECRET)
     .update(username + CLIENT_ID)
     .digest("base64");
 };
@@ -45,13 +54,15 @@ const cognitoService = {
           { Name: "family_name", Value: lastName },
           { Name: "birthdate", Value: dateOfBirth },
           ...(phoneNumber ? [{ Name: "phone_number", Value: phoneNumber }] : []),
-          { Name: "custom:is_super_admin", Value: "false" },
         ],
         SecretHash: computeSecretHash(email),
       };
 
       const command = new SignUpCommand(params);
       const response = await cognitoClient.send(command);
+
+      // Check if user is in super admin list
+      const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(email.toLowerCase());
 
       return {
         success: true,
@@ -61,7 +72,7 @@ const cognitoService = {
         last_name: lastName,
         date_of_birth: dateOfBirth,
         phone_number: phoneNumber,
-        is_super_admin: false,
+        is_super_admin: isSuperAdmin,
         message: "User created successfully. Please verify your email.",
       };
     } catch (error) {
@@ -84,9 +95,13 @@ const cognitoService = {
         AuthParameters: {
           USERNAME: email,
           PASSWORD: password,
-          SECRET_HASH: computeSecretHash(email),
         },
       };
+
+      // Only add SECRET_HASH if CLIENT_SECRET exists
+      if (CLIENT_SECRET) {
+        params.AuthParameters.SECRET_HASH = computeSecretHash(email);
+      }
 
       const command = new InitiateAuthCommand(params);
       const response = await cognitoClient.send(command);
@@ -121,6 +136,10 @@ const cognitoService = {
         throw { message: "Invalid email or password", code: "INVALID_CREDENTIALS" };
       }
       
+      if (error.name === "UserNotConfirmedException") {
+        throw { message: "Please verify your email before signing in", code: "USER_NOT_CONFIRMED" };
+      }
+      
       throw { message: error.message || "Sign in failed", code: "SIGNIN_ERROR" };
     }
   },
@@ -137,6 +156,9 @@ const cognitoService = {
         attributes[attr.Name] = attr.Value;
       });
 
+      // Check if user is super admin from hardcoded list
+      const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(attributes.email.toLowerCase());
+
       return {
         user_id: response.Username,
         email: attributes.email,
@@ -144,7 +166,7 @@ const cognitoService = {
         last_name: attributes.family_name || "",
         date_of_birth: attributes.birthdate || "",
         phone_number: attributes.phone_number || "",
-        is_super_admin: attributes["custom:is_super_admin"] === "true",
+        is_super_admin: isSuperAdmin,
       };
     } catch (error) {
       console.error("Get user error:", error);
@@ -168,6 +190,9 @@ const cognitoService = {
         attributes[attr.Name] = attr.Value;
       });
 
+      // Check if user is super admin from hardcoded list
+      const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(attributes.email.toLowerCase());
+
       return {
         user_id: response.Username,
         email: attributes.email,
@@ -175,7 +200,7 @@ const cognitoService = {
         last_name: attributes.family_name || "",
         date_of_birth: attributes.birthdate || "",
         phone_number: attributes.phone_number || "",
-        is_super_admin: attributes["custom:is_super_admin"] === "true",
+        is_super_admin: isSuperAdmin,
         created_at: response.UserCreateDate,
       };
     } catch (error) {
@@ -206,6 +231,9 @@ const cognitoService = {
           attributes[attr.Name] = attr.Value;
         });
 
+        // Check if user is super admin from hardcoded list
+        const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(attributes.email.toLowerCase());
+
         return {
           user_id: user.Username,
           email: attributes.email,
@@ -213,8 +241,9 @@ const cognitoService = {
           last_name: attributes.family_name || "",
           date_of_birth: attributes.birthdate || "",
           phone_number: attributes.phone_number || "",
-          is_super_admin: attributes["custom:is_super_admin"] === "true",
+          is_super_admin: isSuperAdmin,
           created_at: user.UserCreateDate,
+          status: user.UserStatus, // CONFIRMED, UNCONFIRMED, etc.
         };
       });
     } catch (error) {
@@ -227,32 +256,49 @@ const cognitoService = {
   isSuperAdmin: async (userId) => {
     try {
       const user = await cognitoService.getUserById(userId);
-      return user.is_super_admin;
+      return SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase());
     } catch (error) {
       return false;
     }
   },
 
-  // Promote user to Super Admin
+  // Add email to super admin list (for demo purposes)
+  addSuperAdmin: (email) => {
+    const normalizedEmail = email.toLowerCase();
+    if (!SUPER_ADMIN_EMAILS.includes(normalizedEmail)) {
+      SUPER_ADMIN_EMAILS.push(normalizedEmail);
+      console.log(`✅ Added ${email} to super admin list`);
+      return true;
+    }
+    return false;
+  },
+
+  // Remove email from super admin list
+  removeSuperAdmin: (email) => {
+    const normalizedEmail = email.toLowerCase();
+    const index = SUPER_ADMIN_EMAILS.indexOf(normalizedEmail);
+    if (index > -1) {
+      SUPER_ADMIN_EMAILS.splice(index, 1);
+      console.log(`✅ Removed ${email} from super admin list`);
+      return true;
+    }
+    return false;
+  },
+
+  // Get list of super admins
+  getSuperAdminList: () => {
+    return [...SUPER_ADMIN_EMAILS];
+  },
+
+  // Promote user to Super Admin (just adds to list)
   promoteToSuperAdmin: async (userId) => {
     try {
-      const params = {
-        UserPoolId: USER_POOL_ID,
-        Username: userId,
-        UserAttributes: [
-          {
-            Name: "custom:is_super_admin",
-            Value: "true",
-          },
-        ],
-      };
-
-      const command = new AdminUpdateUserAttributesCommand(params);
-      await cognitoClient.send(command);
-
+      const user = await cognitoService.getUserById(userId);
+      cognitoService.addSuperAdmin(user.email);
+      
       return {
         success: true,
-        message: "User promoted to super admin successfully",
+        message: `${user.email} promoted to super admin successfully`,
       };
     } catch (error) {
       console.error("Promote user error:", error);
@@ -282,4 +328,8 @@ const cognitoService = {
   },
 };
 
-module.exports = { cognitoService };
+// Log super admin configuration on startup
+console.log("🔐 Super Admin Configuration:");
+console.log(`   Super Admins: ${SUPER_ADMIN_EMAILS.join(", ")}`);
+
+module.exports = { cognitoService, cognitoClient, computeSecretHash };

@@ -1,4 +1,6 @@
 // backend/services/s3.js
+require("dotenv").config();
+
 const {
   S3Client,
   PutObjectCommand,

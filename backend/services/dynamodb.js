@@ -1,4 +1,6 @@
 // backend/services/dynamodb.js
+require("dotenv").config();
+
 const {
   DynamoDBClient,
   PutItemCommand,

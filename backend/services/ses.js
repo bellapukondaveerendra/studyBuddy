@@ -1,4 +1,6 @@
 // backend/services/ses.js
+require("dotenv").config();
+
 const {
   SESClient,
   SendEmailCommand,

@@ -1,4 +1,6 @@
 // backend/services/sns.js
+require("dotenv").config();
+
 const {
   SNSClient,
   PublishCommand,
