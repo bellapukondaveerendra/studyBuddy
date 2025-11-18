@@ -17,7 +17,7 @@ import CreateGroup from "./components/CreateGroup";
 import GroupDetail from "./components/GroupDetail";
 import FindGroups from "./components/FindGroups";
 import SuperAdminDashboard from "./components/SuperAdminDashboard";
-import UserDashboard from "./components/UserDashboard"; // Added import
+import UserDashboard from "./components/UserDashboard";
 import "./App.css";
 
 function App() {
@@ -26,6 +26,8 @@ function App() {
   const [message, setMessage] = useState({ text: "", type: "" });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [signupEmail, setSignupEmail] = useState("");
 
   useEffect(() => {
     // Check if user is already authenticated
@@ -179,7 +181,6 @@ function App() {
   };
 
   // Sign Up Component
-  // Updated SignUp Component for App.js
   const SignUp = () => {
     const [formData, setFormData] = useState({
       email: "",
@@ -193,8 +194,6 @@ function App() {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [needsVerification, setNeedsVerification] = useState(false); // NEW
-    const [signupEmail, setSignupEmail] = useState(""); // NEW
 
     const handleSubmit = async () => {
       setMessage({ text: "", type: "" });
@@ -260,7 +259,7 @@ function App() {
         );
 
         if (response.success) {
-          // NEW: Instead of auto sign in, show verification page
+          // Store email and trigger verification page
           setSignupEmail(formData.email);
           setNeedsVerification(true);
           showMessage(
@@ -277,25 +276,28 @@ function App() {
       }
     };
 
-    // NEW: If user needs to verify, show verification component
-  if (needsVerification) {
-    return (
-      <VerifyEmail
-        email={signupEmail}
-        onSuccess={() => {
-          showMessage("Email verified! You can now sign in.", "success");
-          setTimeout(() => {
+    // If verification is needed, show VerifyEmail component
+    if (needsVerification) {
+      return (
+        <VerifyEmail
+          email={signupEmail}
+          onVerified={() => {
+            showMessage("Email verified! You can now sign in.", "success");
+            setTimeout(() => {
+              setCurrentPage("signin");
+              setNeedsVerification(false);
+              setSignupEmail("");
+            }, 2000);
+          }}
+          onBack={() => {
             setCurrentPage("signin");
             setNeedsVerification(false);
-          }, 2000);
-        }}
-        onBackToSignin={() => {
-          setCurrentPage("signin");
-          setNeedsVerification(false);
-        }}
-      />
-    );
-  }
+            setSignupEmail("");
+          }}
+        />
+      );
+    }
+
     return (
       <div className="auth-container signup-bg">
         <div className="auth-card">
@@ -359,7 +361,7 @@ function App() {
                     setFormData({ ...formData, dateOfBirth: e.target.value })
                   }
                   className="auth-input"
-                  max={new Date().toISOString().split("T")[0]} // Prevent future dates
+                  max={new Date().toISOString().split("T")[0]}
                 />
               </div>
             </div>
@@ -568,26 +570,6 @@ function App() {
 
       {/* Page Content */}
       {renderCurrentPage()}
-
-      {/* Demo Info - Only show for auth pages */}
-      {!isAuthenticated && (
-        <div className="demo-info">
-          <div className="demo-card">
-            <h3 className="demo-title">Demo Info</h3>
-            <p className="demo-text">
-              <strong>Regular User:</strong> demo@example.com / password123
-            </p>
-            <p className="demo-text">
-              <strong>Super Admin:</strong> superadmin@example.com /
-              superadmin123
-            </p>
-            <p className="demo-small-text">
-              Full-stack app with real database authentication and admin
-              controls
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,19 +1,16 @@
 // src/components/VerifyEmail.js
 import React, { useState } from "react";
-import { Mail, Lock, CheckCircle, XCircle, ArrowRight } from "lucide-react";
-import { authAPI } from "../services/api";
+import { Mail, CheckCircle, XCircle, RefreshCw } from "lucide-react";
 
-const VerifyEmail = ({ email, onSuccess, onBackToSignin }) => {
+const VerifyEmail = ({ email, onVerified, onBack }) => {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
   const [resending, setResending] = useState(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!code || code.length !== 6) {
-      setMessage({ text: "Please enter a 6-digit code", type: "error" });
+  const handleVerify = async () => {
+    if (!code.trim()) {
+      setMessage({ text: "Please enter the verification code", type: "error" });
       return;
     }
 
@@ -21,19 +18,30 @@ const VerifyEmail = ({ email, onSuccess, onBackToSignin }) => {
     setMessage({ text: "", type: "" });
 
     try {
-      const response = await authAPI.confirmEmail(email, code);
-      
-      setMessage({ text: response.message, type: "success" });
-      
-      // Redirect to signin after 2 seconds
-      setTimeout(() => {
-        if (onSuccess) {
-          onSuccess();
-        }
-      }, 2000);
+      const response = await fetch("/api/auth/confirm", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email,
+          code: code.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setMessage({ text: data.message, type: "success" });
+        setTimeout(() => {
+          onVerified();
+        }, 2000);
+      } else {
+        setMessage({ text: data.message || "Verification failed", type: "error" });
+      }
     } catch (error) {
-      const errorMessage = error.response?.data?.message || "Verification failed";
-      setMessage({ text: errorMessage, type: "error" });
+      console.error("Verification error:", error);
+      setMessage({ text: "Failed to verify email. Please try again.", type: "error" });
     } finally {
       setLoading(false);
     }
@@ -44,29 +52,54 @@ const VerifyEmail = ({ email, onSuccess, onBackToSignin }) => {
     setMessage({ text: "", type: "" });
 
     try {
-      const response = await authAPI.resendCode(email);
-      setMessage({ text: response.message, type: "success" });
+      const response = await fetch("/api/auth/resend-code", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setMessage({ text: data.message, type: "success" });
+      } else {
+        setMessage({ text: data.message || "Failed to resend code", type: "error" });
+      }
     } catch (error) {
-      const errorMessage = error.response?.data?.message || "Failed to resend code";
-      setMessage({ text: errorMessage, type: "error" });
+      console.error("Resend error:", error);
+      setMessage({ text: "Failed to resend code. Please try again.", type: "error" });
     } finally {
       setResending(false);
     }
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter") {
+      handleVerify();
+    }
+  };
+
   return (
-    <div className="auth-container verify-bg">
+    <div className="auth-container verification-bg">
       <div className="auth-card">
+        {/* Header */}
         <div className="auth-header">
-          <div className="icon-container verify-icon">
-            <Mail size={32} />
+          <div className="icon-container verification-icon">
+            <Mail size={40} />
           </div>
-          <h1 className="auth-title">Verify Your Email</h1>
-          <p className="auth-subtitle">We sent a code to {email}</p>
+          <h1>Verify Your Email</h1>
+          <p className="auth-subtitle">
+            We've sent a verification code to <strong>{email}</strong>
+          </p>
         </div>
 
+        {/* Message */}
         {message.text && (
-          <div className={`message ${message.type}`} style={{ marginBottom: "20px" }}>
+          <div className={`message ${message.type}`}>
             {message.type === "success" ? (
               <CheckCircle size={20} />
             ) : (
@@ -76,74 +109,203 @@ const VerifyEmail = ({ email, onSuccess, onBackToSignin }) => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="form-container">
-          <div className="input-group">
-            <label className="input-label">Verification Code</label>
-            <div className="input-container">
-              <Lock size={20} className="input-icon-left" />
-              <input
-                type="text"
-                required
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                className="auth-input"
-                placeholder="Enter 6-digit code"
-                maxLength="6"
-                pattern="[0-9]{6}"
-              />
+        {/* Form */}
+        <div className="auth-form">
+          <div className="form-group">
+            <label htmlFor="code">Verification Code</label>
+            <input
+              id="code"
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Enter 6-digit code"
+              maxLength={6}
+              disabled={loading}
+              className="form-input"
+              autoFocus
+            />
+            <div className="input-hint">
+              Check your email for the 6-digit verification code
             </div>
-            <p style={{ fontSize: "0.875rem", color: "#64748b", marginTop: "8px" }}>
-              Enter the 6-digit code sent to your email
-            </p>
           </div>
 
           <button
-            type="submit"
-            disabled={loading || code.length !== 6}
-            className={`auth-button verify-button ${loading ? "loading" : ""}`}
+            onClick={handleVerify}
+            disabled={loading || !code.trim()}
+            className="auth-button verification-button"
           >
-            {loading ? "Verifying..." : (
-              <>
-                Verify Email <ArrowRight size={20} style={{ marginLeft: "8px" }} />
-              </>
-            )}
+            {loading ? "Verifying..." : "Verify Email"}
           </button>
-        </form>
 
-        <div style={{ textAlign: "center", marginTop: "24px" }}>
-          <p style={{ color: "#64748b", marginBottom: "12px" }}>
-            Didn't receive the code?
-          </p>
+          <div className="auth-divider">
+            <span>Didn't receive the code?</span>
+          </div>
+
           <button
-            type="button"
             onClick={handleResendCode}
             disabled={resending}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#6366f1",
-              fontWeight: "600",
-              cursor: resending ? "not-allowed" : "pointer",
-              fontSize: "0.95rem",
-              textDecoration: "underline",
-            }}
+            className="auth-button secondary-button"
           >
-            {resending ? "Sending..." : "Resend Code"}
+            <RefreshCw size={18} />
+            {resending ? "Resending..." : "Resend Code"}
+          </button>
+
+          <button
+            onClick={onBack}
+            disabled={loading || resending}
+            className="back-link"
+          >
+            ← Back to Sign In
           </button>
         </div>
 
-        <div className="auth-link-container" style={{ marginTop: "24px" }}>
-          <p className="auth-link-text">
-            <span
-              onClick={onBackToSignin}
-              className="auth-link signin-link"
-              style={{ cursor: "pointer" }}
-            >
-              ← Back to Sign In
-            </span>
+        {/* Help Text */}
+        <div className="auth-footer">
+          <p className="help-text">
+            💡 <strong>Tip:</strong> If you don't see the email, check your spam folder.
+            The email comes from AWS Cognito.
           </p>
         </div>
       </div>
+
+      <style jsx>{`
+        .verification-bg::before {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .verification-icon {
+          background: linear-gradient(135deg, #10b981, #059669);
+          color: white;
+        }
+
+        .auth-subtitle {
+          color: #64748b;
+          font-size: 0.95rem;
+          margin-top: 8px;
+        }
+
+        .auth-subtitle strong {
+          color: #667eea;
+          font-weight: 600;
+        }
+
+        .message {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 12px 16px;
+          border-radius: 12px;
+          margin-bottom: 20px;
+          font-weight: 500;
+          animation: slideIn 0.3s ease;
+        }
+
+        .message.success {
+          background-color: #d1fae5;
+          color: #065f46;
+          border: 1px solid #6ee7b7;
+        }
+
+        .message.error {
+          background-color: #fee2e2;
+          color: #991b1b;
+          border: 1px solid #fca5a5;
+        }
+
+        .input-hint {
+          margin-top: 6px;
+          font-size: 0.85rem;
+          color: #64748b;
+        }
+
+        .verification-button {
+          background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .verification-button:hover:not(:disabled) {
+          background: linear-gradient(135deg, #059669, #047857);
+        }
+
+        .secondary-button {
+          background: #f1f5f9;
+          color: #475569;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+        }
+
+        .secondary-button:hover:not(:disabled) {
+          background: #e2e8f0;
+          color: #334155;
+        }
+
+        .auth-divider {
+          display: flex;
+          align-items: center;
+          margin: 20px 0;
+          color: #94a3b8;
+          font-size: 0.9rem;
+        }
+
+        .auth-divider::before,
+        .auth-divider::after {
+          content: "";
+          flex: 1;
+          height: 1px;
+          background: #e2e8f0;
+        }
+
+        .auth-divider span {
+          padding: 0 12px;
+        }
+
+        .back-link {
+          background: none;
+          border: none;
+          color: #667eea;
+          font-weight: 500;
+          cursor: pointer;
+          padding: 10px;
+          margin-top: 12px;
+          transition: all 0.2s;
+        }
+
+        .back-link:hover:not(:disabled) {
+          color: #764ba2;
+          transform: translateX(-4px);
+        }
+
+        .back-link:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .auth-footer {
+          margin-top: 24px;
+          padding-top: 20px;
+          border-top: 1px solid #e2e8f0;
+        }
+
+        .help-text {
+          font-size: 0.85rem;
+          color: #64748b;
+          line-height: 1.5;
+          margin: 0;
+        }
+
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 };
