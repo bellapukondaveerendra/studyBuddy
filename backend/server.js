@@ -1,3 +1,4 @@
+// backend/server.js - CRITICAL FIX FOR ADMIN ROUTES
 
 require('dotenv').config();
 
@@ -13,17 +14,39 @@ const { sesService } = require("./services/ses");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const SUPER_ADMIN_EMAILS = [
+  "ccproj2025@gmail.com",
+  "superadmin@studybuddy.com",
+  // Add more super admin emails here
+];
 
-// Middleware
-app.use(cors());
+// ========== MIDDLEWARE - ORDER MATTERS! ==========
+// CORS must come FIRST
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:5000'],
+  credentials: true
+}));
+
+// Body parser
 app.use(express.json());
 
-// Cognito authentication middleware
+// Request logger (helpful for debugging)
+app.use((req, res, next) => {
+  console.log(`📨 ${req.method} ${req.path}`);
+  next();
+});
+
+// ========== AUTHENTICATION MIDDLEWARE ==========
+
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
 
+  console.log(`🔐 Auth check for ${req.path}`);
+  console.log(`   Token present: ${!!token}`);
+
   if (!token) {
+    console.log("❌ No token provided");
     return res.status(401).json({
       success: false,
       message: "Access token required",
@@ -37,9 +60,10 @@ const authenticateToken = async (req, res, next) => {
       email: user.email,
       isSuperAdmin: user.is_super_admin,
     };
+    console.log(`✅ Authenticated: ${user.email} (Super Admin: ${user.is_super_admin})`);
     next();
   } catch (error) {
-    console.error("❌ Authentication error:", error);
+    console.error("❌ Authentication error:", error.message);
     return res.status(403).json({
       success: false,
       message: "Invalid or expired token",
@@ -47,7 +71,6 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-// Super Admin middleware
 const authenticateSuperAdmin = async (req, res, next) => {
   try {
     console.log("🔍 Checking super admin for user:", req.user.email);
@@ -66,29 +89,33 @@ const authenticateSuperAdmin = async (req, res, next) => {
     next();
   } catch (error) {
     console.error("❌ Super admin check error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to verify super admin status: " + error.message,
     });
   }
 };
 
+// ========== API ROUTES (MUST COME BEFORE STATIC FILES) ==========
+
+// Health check
+app.get("/api/health", (req, res) => {
+  console.log("✅ Health check");
+  res.json({
+    success: true,
+    message: "Server is running (AWS Version)",
+    timestamp: new Date().toISOString(),
+    version: "3.0.0-AWS",
+  });
+});
+
 // ========== AUTHENTICATION ROUTES ==========
 
-// Sign Up Route
 app.post("/api/auth/signup", async (req, res) => {
+  console.log("📝 Signup request");
   try {
-    const {
-      email,
-      password,
-      confirmPassword,
-      firstName,
-      lastName,
-      dateOfBirth,
-      phoneNumber,
-    } = req.body;
+    const { email, password, confirmPassword, firstName, lastName, dateOfBirth, phoneNumber } = req.body;
 
-    // Validation
     if (!email || !password || !confirmPassword || !firstName || !lastName || !dateOfBirth) {
       return res.status(400).json({
         success: false,
@@ -96,7 +123,6 @@ app.post("/api/auth/signup", async (req, res) => {
       });
     }
 
-    // Password validation
     if (password !== confirmPassword) {
       return res.status(400).json({
         success: false,
@@ -111,15 +137,7 @@ app.post("/api/auth/signup", async (req, res) => {
       });
     }
 
-    // Create user in Cognito
-    const result = await cognitoService.signUp(
-      email,
-      password,
-      firstName,
-      lastName,
-      dateOfBirth,
-      phoneNumber?.trim() || null
-    );
+    const result = await cognitoService.signUp(email, password, firstName, lastName, dateOfBirth, phoneNumber?.trim() || null);
 
     res.json({
       success: true,
@@ -136,14 +154,12 @@ app.post("/api/auth/signup", async (req, res) => {
     });
   } catch (error) {
     console.error("Signup error:", error);
-
     if (error.code === "EMAIL_EXISTS") {
       return res.status(400).json({
         success: false,
         message: "Email already exists. Please use a different email.",
       });
     }
-
     res.status(500).json({
       success: false,
       message: "Internal server error. Please try again.",
@@ -151,8 +167,8 @@ app.post("/api/auth/signup", async (req, res) => {
   }
 });
 
-// Sign In Route
 app.post("/api/auth/signin", async (req, res) => {
+  console.log("🔑 Signin request");
   try {
     const { email, password } = req.body;
 
@@ -171,20 +187,20 @@ app.post("/api/auth/signin", async (req, res) => {
       user: {
         user_id: result.user_id,
         email: result.email,
+        first_name: result.first_name,
+        last_name: result.last_name,
         is_super_admin: result.is_super_admin,
       },
-      token: result.tokens.accessToken, // Using Cognito access token
+      token: result.tokens.accessToken,
     });
   } catch (error) {
     console.error("Signin error:", error);
-
     if (error.code === "INVALID_CREDENTIALS") {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password. Please try again.",
       });
     }
-
     res.status(500).json({
       success: false,
       message: "Internal server error. Please try again.",
@@ -192,79 +208,36 @@ app.post("/api/auth/signin", async (req, res) => {
   }
 });
 
-// Get user profile
 app.get("/api/auth/profile", authenticateToken, async (req, res) => {
   try {
     const user = await cognitoService.getUserById(req.user.userId);
-    res.json({
-      success: true,
-      user: user,
-    });
+    res.json({ success: true, user });
   } catch (error) {
     console.error("Profile error:", error);
-    res.status(404).json({
-      success: false,
-      message: "User not found",
-    });
+    res.status(404).json({ success: false, message: "User not found" });
   }
 });
 
-// Verify token route
 app.post("/api/auth/verify", authenticateToken, (req, res) => {
-  res.json({
-    success: true,
-    message: "Token is valid",
-    user: req.user,
-  });
+  res.json({ success: true, message: "Token is valid", user: req.user });
 });
 
-// Check email exists
-app.post("/api/auth/check-email", authenticateToken, async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: "Email is required",
-      });
-    }
-
-    try {
-      const user = await cognitoService.getUserByEmail(email);
-      res.json({
-        success: true,
-        exists: true,
-        user: { user_id: user.user_id, email: user.email },
-      });
-    } catch (error) {
-      res.json({
-        success: true,
-        exists: false,
-        user: null,
-      });
-    }
-  } catch (error) {
-    console.error("Check email error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to check email",
-    });
-  }
-});
-
-// ========== SUPER ADMIN ROUTES ==========
+// ========== SUPER ADMIN ROUTES - CRITICAL FIX ==========
 
 app.get("/api/admin/groups", authenticateToken, authenticateSuperAdmin, async (req, res) => {
-  console.log("📋 Admin groups route hit");
+  console.log("📋 ========== ADMIN GROUPS ROUTE HIT ==========");
+  console.log(`   User: ${req.user.email}`);
+  console.log(`   Is Super Admin: ${req.user.isSuperAdmin}`);
+  
   try {
     console.log("🔍 Fetching all groups for super admin...");
     const groups = await dynamoService.getAllGroupsForSuperAdmin();
-    console.log(`✅ Found ${groups.length} groups`);
+    console.log(`✅ Found ${groups.length} total groups`);
     
     const pendingCount = await dynamoService.getPendingGroupApprovalsCount();
     console.log(`✅ Found ${pendingCount} pending groups`);
     
+    console.log("📤 Sending response...");
     res.json({
       success: true,
       groups: groups,
@@ -279,71 +252,16 @@ app.get("/api/admin/groups", authenticateToken, authenticateSuperAdmin, async (r
   }
 });
 
-app.post("/api/admin/groups/:group_id/approve", authenticateToken, authenticateSuperAdmin, async (req, res) => {
-  try {
-    const { group_id } = req.params;
-    const result = await dynamoService.approveGroup(group_id, req.user.userId);
-
-    res.json({
-      success: true,
-      message: "Group approved successfully",
-      group: result,
-    });
-  } catch (error) {
-    console.error("Approve group error:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to approve group",
-    });
-  }
-});
-
-app.post("/api/admin/groups/:group_id/reject", authenticateToken, authenticateSuperAdmin, async (req, res) => {
-  try {
-    const { group_id } = req.params;
-    const { rejection_reason } = req.body;
-
-    const result = await dynamoService.rejectGroup(group_id, req.user.userId, rejection_reason);
-
-    res.json({
-      success: true,
-      message: "Group rejected successfully",
-      group: result,
-    });
-  } catch (error) {
-    console.error("Reject group error:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to reject group",
-    });
-  }
-});
-
-app.delete("/api/admin/groups/:group_id", authenticateToken, authenticateSuperAdmin, async (req, res) => {
-  try {
-    const { group_id } = req.params;
-    await dynamoService.deleteGroup(group_id);
-
-    res.json({
-      success: true,
-      message: "Group deleted successfully",
-    });
-  } catch (error) {
-    console.error("Delete group error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete group",
-    });
-  }
-});
-
 app.get("/api/admin/users", authenticateToken, authenticateSuperAdmin, async (req, res) => {
-  console.log("📋 Admin users route hit");
+  console.log("👥 ========== ADMIN USERS ROUTE HIT ==========");
+  console.log(`   User: ${req.user.email}`);
+  
   try {
     console.log("🔍 Fetching all users from Cognito...");
     const users = await cognitoService.getAllUsers();
     console.log(`✅ Found ${users.length} users`);
     
+    console.log("📤 Sending response...");
     res.json({
       success: true,
       users: users,
@@ -357,50 +275,57 @@ app.get("/api/admin/users", authenticateToken, authenticateSuperAdmin, async (re
   }
 });
 
+app.post("/api/admin/groups/:group_id/approve", authenticateToken, authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { group_id } = req.params;
+    const result = await dynamoService.approveGroup(group_id, req.user.userId);
+    res.json({ success: true, message: "Group approved successfully", group: result });
+  } catch (error) {
+    console.error("Approve group error:", error);
+    res.status(500).json({ success: false, message: error.message || "Failed to approve group" });
+  }
+});
+
+app.post("/api/admin/groups/:group_id/reject", authenticateToken, authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { group_id } = req.params;
+    const { rejection_reason } = req.body;
+    const result = await dynamoService.rejectGroup(group_id, req.user.userId, rejection_reason);
+    res.json({ success: true, message: "Group rejected successfully", group: result });
+  } catch (error) {
+    console.error("Reject group error:", error);
+    res.status(500).json({ success: false, message: error.message || "Failed to reject group" });
+  }
+});
+
+app.delete("/api/admin/groups/:group_id", authenticateToken, authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { group_id } = req.params;
+    await dynamoService.deleteGroup(group_id);
+    res.json({ success: true, message: "Group deleted successfully" });
+  } catch (error) {
+    console.error("Delete group error:", error);
+    res.status(500).json({ success: false, message: "Failed to delete group" });
+  }
+});
+
 app.post("/api/admin/users/:user_id/promote", authenticateToken, authenticateSuperAdmin, async (req, res) => {
   try {
     const { user_id } = req.params;
     await cognitoService.promoteToSuperAdmin(user_id);
-
-    res.json({
-      success: true,
-      message: "User promoted to super admin successfully",
-    });
+    res.json({ success: true, message: "User promoted to super admin successfully" });
   } catch (error) {
     console.error("Promote user error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to promote user",
-    });
+    res.status(500).json({ success: false, message: "Failed to promote user" });
   }
 });
 
-// ========== EMAIL TESTING ROUTE ==========
-
-app.get("/api/test-email", authenticateToken, async (req, res) => {
-  try {
-    const result = await sesService.sendTestEmail("ccproj2025@gmail.com");
-    res.json({
-      success: true,
-      message: "Test email sent! Check ccproj2025@gmail.com inbox.",
-      messageId: result.messageId,
-    });
-  } catch (error) {
-    console.error("Test email error:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
-
-// ========== STUDY GROUP ROUTES ==========
+// ========== GROUP ROUTES ==========
 
 app.post("/api/groups/create", authenticateToken, async (req, res) => {
   try {
     const groupData = req.body;
     const result = await dynamoService.createStudyGroup(groupData, req.user.userId);
-
     res.json({
       success: true,
       message: "Study group created and submitted for approval!",
@@ -409,42 +334,29 @@ app.post("/api/groups/create", authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error("Create group error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to create study group. Please try again.",
-    });
+    res.status(500).json({ success: false, message: "Failed to create study group. Please try again." });
   }
 });
 
 app.get("/api/groups", authenticateToken, async (req, res) => {
   try {
     const groups = await dynamoService.getAllStudyGroups(req.user.userId);
-    res.json({
-      success: true,
-      groups: groups,
-    });
+    res.json({ success: true, groups });
   } catch (error) {
     console.error("Get groups error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch study groups",
-    });
+    res.status(500).json({ success: false, message: "Failed to fetch study groups" });
   }
 });
 
 app.get("/api/groups/my-groups", authenticateToken, async (req, res) => {
+  console.log("📚 My Groups route hit for user:", req.user.userId);
   try {
     const groups = await dynamoService.getUserGroups(req.user.userId);
-    res.json({
-      success: true,
-      groups: groups,
-    });
+    console.log(`✅ Returning ${groups.length} groups`);
+    res.json({ success: true, groups });
   } catch (error) {
     console.error("Get my groups error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch your groups",
-    });
+    res.status(500).json({ success: false, message: "Failed to fetch your groups" });
   }
 });
 
@@ -452,24 +364,13 @@ app.get("/api/groups/:group_id", authenticateToken, async (req, res) => {
   try {
     const { group_id } = req.params;
     const group = await dynamoService.getGroupById(group_id);
-
     if (!group) {
-      return res.status(404).json({
-        success: false,
-        message: "Group not found",
-      });
+      return res.status(404).json({ success: false, message: "Group not found" });
     }
-
-    res.json({
-      success: true,
-      group: group,
-    });
+    res.json({ success: true, group });
   } catch (error) {
     console.error("Get group error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch group details",
-    });
+    res.status(500).json({ success: false, message: "Failed to fetch group details" });
   }
 });
 
@@ -768,36 +669,30 @@ app.get("/api/stats", authenticateToken, async (req, res) => {
     });
   }
 });
+// 404 handler for API routes
+// app.use("/api/*", (req, res) => {
+//   console.log(`❌ 404 - API Route not found: ${req.method} ${req.path}`);
+//   res.status(404).json({
+//     success: false,
+//     message: `Route ${req.method} ${req.originalUrl} not found`,
+//   });
+// });
 
-// ========== STATIC FILES ==========
+// ========== STATIC FILES - MUST COME LAST ==========
 
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../build")));
-
   app.get("*", (req, res) => {
     if (!req.path.startsWith("/api/")) {
       res.sendFile(path.join(__dirname, "../build/index.html"));
     }
+    res.sendFile(path.join(__dirname, "../build/index.html"));
   });
 }
 
-// ========== ERROR HANDLING ==========
-
-app.use((req, res, next) => {
-  if (req.path.startsWith("/api/")) {
-    console.log(`❌ 404 - Route not found: ${req.method} ${req.path}`);
-    res.status(404).json({
-      success: false,
-      message: `Route ${req.method} ${req.originalUrl} not found`,
-    });
-  } else {
-    next();
-  }
-});
-
+// Global error handler
 app.use((err, req, res, next) => {
   console.error("Global error:", err);
-
   res.status(err.status || 500).json({
     success: false,
     message: err.message || "Internal server error",
@@ -805,38 +700,23 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ========== GRACEFUL SHUTDOWN ==========
+// ========== START SERVER ==========
 
-process.on("SIGTERM", () => {
-  console.log("SIGTERM signal received: closing HTTP server");
-  server.close(() => {
-    console.log("HTTP server closed");
-    process.exit(0);
-  });
-});
-
-process.on("SIGINT", () => {
-  console.log("SIGINT signal received: closing HTTP server");
-  server.close(() => {
-    console.log("HTTP server closed");
-    process.exit(0);
-  });
-});
-
-// Start server
 const server = app.listen(PORT, () => {
+  console.log("\n" + "=".repeat(60));
   console.log(`🚀 StudyBuddy API server running on http://localhost:${PORT}`);
+  console.log("=".repeat(60));
   console.log(`☁️  AWS Services:`);
   console.log(`   ✅ Cognito: User Authentication`);
   console.log(`   ✅ DynamoDB: Data Storage`);
   console.log(`   ✅ S3: File Storage`);
   console.log(`   ✅ SES: Email Notifications`);
   console.log(`📝 API Version: 3.0.0-AWS`);
-  console.log(`🌟 Migration Complete - All services running on AWS!`);
   console.log(`\n📋 Available Routes:`);
-  console.log(`   Auth: /api/auth/signin, /api/auth/signup`);
-  console.log(`   Admin: /api/admin/groups, /api/admin/users`);
-  console.log(`   Groups: /api/groups, /api/groups/my-groups`);
+  console.log(`   Auth: POST /api/auth/signin, POST /api/auth/signup`);
+  console.log(`   Admin: GET /api/admin/groups, GET /api/admin/users`);
+  console.log(`   Groups: GET /api/groups, GET /api/groups/my-groups`);
+  console.log("=".repeat(60) + "\n");
 });
 
 module.exports = { app, server };

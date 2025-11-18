@@ -253,14 +253,25 @@ const cognitoService = {
   },
 
   // Check if user is Super Admin
-  isSuperAdmin: async (userId) => {
-    try {
-      const user = await cognitoService.getUserById(userId);
-      return SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase());
-    } catch (error) {
-      return false;
-    }
-  },
+isSuperAdmin: async (userId) => {
+  try {
+    console.log("🔍 [isSuperAdmin] Checking userId:", userId);
+    
+    const user = await cognitoService.getUserById(userId);
+    console.log("🔍 [isSuperAdmin] User found:", user.email);
+    console.log("🔍 [isSuperAdmin] Super admin list:", SUPER_ADMIN_EMAILS);
+    console.log("🔍 [isSuperAdmin] Email lowercase:", user.email.toLowerCase());
+    console.log("🔍 [isSuperAdmin] Is in list?:", SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase()));
+    
+    const result = SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase());
+    console.log(`🔍 [isSuperAdmin] Final result: ${result}`);
+    
+    return result;
+  } catch (error) {
+    console.error("❌ [isSuperAdmin] Error:", error);
+    return false;
+  }
+},
 
   // Add email to super admin list (for demo purposes)
   addSuperAdmin: (email) => {

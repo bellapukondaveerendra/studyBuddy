@@ -117,36 +117,115 @@ const dynamoService = {
   },
 
   // Get user's groups
-  getUserGroups: async (userId) => {
+getUserGroups: async (userId) => {
+  try {
+    console.log(`🔍 Fetching groups for user: ${userId}`);
+    
+    // First, get all memberships for this user
+    const params = {
+      TableName: TABLES.MEMBERS,
+      IndexName: "UserIdIndex",
+      KeyConditionExpression: "user_id = :userId",
+      ExpressionAttributeValues: marshall({ ":userId": userId }),
+    };
+
+    const result = await dynamoClient.send(new QueryCommand(params));
+    const memberships = result.Items ? result.Items.map((item) => unmarshall(item)) : [];
+
+    console.log(`✅ Found ${memberships.length} memberships for user`);
+
+    if (memberships.length === 0) {
+      return [];
+    }
+
+    // Get full group details for ALL groups (including pending ones)
+    const groups = await Promise.all(
+      memberships.map(async (membership) => {
+        try {
+          const group = await dynamoService.getGroupById(membership.group_id);
+          
+          // IMPORTANT: Return ALL groups, not just active ones
+          // Users should see their pending groups too
+          if (!group) {
+            console.log(`⚠️ Group ${membership.group_id} not found`);
+            return null;
+          }
+
+          return {
+            ...group,
+            user_role: membership.is_admin ? "admin" : "member",
+            membership_status: membership.status,
+            current_user_is_admin: membership.is_admin,
+          };
+        } catch (error) {
+          console.error(`Error fetching group ${membership.group_id}:`, error);
+          return null;
+        }
+      })
+    );
+
+    // Filter out null values (groups that couldn't be found)
+    const validGroups = groups.filter((group) => group !== null);
+    
+    console.log(`✅ Returning ${validGroups.length} groups (including pending)`);
+    
+    return validGroups;
+  } catch (error) {
+    console.error("Get user groups error:", error);
+    
+    // If the index doesn't exist, fall back to scanning
+    console.log("⚠️ UserIdIndex might not exist, trying fallback method...");
+    
     try {
-      const params = {
+      // Fallback: Scan the MEMBERS table
+      const scanParams = {
         TableName: TABLES.MEMBERS,
-        IndexName: "UserIdIndex",
-        KeyConditionExpression: "user_id = :userId",
+        FilterExpression: "user_id = :userId",
         ExpressionAttributeValues: marshall({ ":userId": userId }),
       };
 
-      const result = await dynamoClient.send(new QueryCommand(params));
-      const memberships = result.Items ? result.Items.map((item) => unmarshall(item)) : [];
+      const scanResult = await dynamoClient.send(new ScanCommand(scanParams));
+      const memberships = scanResult.Items ? scanResult.Items.map((item) => unmarshall(item)) : [];
+
+      console.log(`✅ Fallback scan found ${memberships.length} memberships`);
+
+      if (memberships.length === 0) {
+        return [];
+      }
 
       // Get full group details
       const groups = await Promise.all(
         memberships.map(async (membership) => {
-          const group = await dynamoService.getGroupById(membership.group_id);
-          return {
-            ...group,
-            user_role: membership.is_admin ? "admin" : "member",
-            joined_at: membership.joined_at,
-          };
+          try {
+            const group = await dynamoService.getGroupById(membership.group_id);
+            
+            if (!group) {
+              return null;
+            }
+
+            return {
+              ...group,
+              user_role: membership.is_admin ? "admin" : "member",
+              membership_status: membership.status,
+              current_user_is_admin: membership.is_admin,
+            };
+          } catch (error) {
+            console.error(`Error fetching group ${membership.group_id}:`, error);
+            return null;
+          }
         })
       );
 
-      return groups.filter((g) => g !== null);
-    } catch (error) {
-      console.error("Get user groups error:", error);
+      const validGroups = groups.filter((group) => group !== null);
+      console.log(`✅ Fallback returning ${validGroups.length} groups`);
+      
+      return validGroups;
+    } catch (fallbackError) {
+      console.error("Fallback method also failed:", fallbackError);
       throw new Error("Failed to fetch user groups");
     }
-  },
+  }
+},
 
   // Get group by ID
   getGroupById: async (groupId) => {
@@ -290,26 +369,65 @@ const dynamoService = {
   },
 
   // Get all groups for super admin
-  getAllGroupsForSuperAdmin: async () => {
-    try {
-      const params = { TableName: TABLES.GROUPS };
-      const result = await dynamoClient.send(new ScanCommand(params));
-      const groups = result.Items ? result.Items.map((item) => unmarshall(item)) : [];
+getAllGroupsForSuperAdmin: async () => {
+  try {
+    console.log("🔍 Fetching ALL groups for super admin...");
+    
+    const params = { TableName: TABLES.GROUPS };
+    const result = await dynamoClient.send(new ScanCommand(params));
+    const groups = result.Items ? result.Items.map((item) => unmarshall(item)) : [];
 
-      // Get member counts
-      const groupsWithDetails = await Promise.all(
-        groups.map(async (group) => {
+    console.log(`✅ Found ${groups.length} total groups in database`);
+
+    // Get member counts and creator email for each group
+    const groupsWithDetails = await Promise.all(
+      groups.map(async (group) => {
+        try {
           const memberCount = await dynamoService.getGroupMemberCount(group.group_id);
-          return { ...group, member_count: memberCount };
-        })
-      );
+          
+          // Get creator information from Cognito
+          const { cognitoService } = require("./cognito");
+          let creatorEmail = "Unknown";
+          
+          try {
+            const creator = await cognitoService.getUserById(group.created_by);
+            creatorEmail = creator.email;
+          } catch (error) {
+            console.error(`Could not fetch creator for group ${group.group_id}:`, error.message);
+          }
 
-      return groupsWithDetails;
-    } catch (error) {
-      console.error("Get all groups for admin error:", error);
-      throw new Error("Failed to fetch groups");
-    }
-  },
+          return {
+            ...group,
+            member_count: memberCount,
+            creator_email: creatorEmail,
+          };
+        } catch (error) {
+          console.error(`Error processing group ${group.group_id}:`, error);
+          return {
+            ...group,
+            member_count: 0,
+            creator_email: "Unknown",
+          };
+        }
+      })
+    );
+
+    // Sort by created_at descending (newest first)
+    groupsWithDetails.sort((a, b) => {
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    console.log(`✅ Returning ${groupsWithDetails.length} groups with details`);
+    console.log(`   - Pending: ${groupsWithDetails.filter(g => g.status === "pending_approval").length}`);
+    console.log(`   - Active: ${groupsWithDetails.filter(g => g.status === "active").length}`);
+    console.log(`   - Rejected: ${groupsWithDetails.filter(g => g.status === "rejected").length}`);
+
+    return groupsWithDetails;
+  } catch (error) {
+    console.error("Get all groups for admin error:", error);
+    throw new Error("Failed to fetch groups");
+  }
+},
 
   // ========== MEMBER OPERATIONS ==========
 

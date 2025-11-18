@@ -1,6 +1,7 @@
+// src/services/api.js - FINAL WORKING VERSION
 import axios from "axios";
 
-// Create axios instance with base configuration
+// Create axios instance pointing DIRECTLY to backend
 const api = axios.create({
   baseURL: "http://localhost:5000/api",
   timeout: 10000,
@@ -9,13 +10,14 @@ const api = axios.create({
   },
 });
 
-// Add request interceptor to include auth token
+// Request interceptor
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("authToken");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    console.log(`📤 API Request: ${config.method.toUpperCase()} ${config.url}`);
     return config;
   },
   (error) => {
@@ -23,15 +25,19 @@ api.interceptors.request.use(
   }
 );
 
-// Add response interceptor for better error handling
+// Response interceptor
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log(`✅ API Success: ${response.config.url}`);
+    return response;
+  },
   (error) => {
+    console.error(`❌ API Error: ${error.config?.url}`, error.response?.data || error.message);
+    
     if (error.response?.status === 401) {
-      // Token expired or invalid
       localStorage.removeItem("authToken");
       localStorage.removeItem("userData");
-      window.location.href = "/signin";
+      window.location.href = "/";
     }
     return Promise.reject(error);
   }
@@ -39,32 +45,15 @@ api.interceptors.response.use(
 
 // Authentication API
 export const authAPI = {
-  signup: async (
-    email,
-    password,
-    confirmPassword,
-    firstName,
-    lastName,
-    dateOfBirth,
-    phoneNumber = ""
-  ) => {
+  signup: async (email, password, confirmPassword, firstName, lastName, dateOfBirth, phoneNumber = "") => {
     const response = await api.post("/auth/signup", {
-      email,
-      password,
-      confirmPassword,
-      firstName,
-      lastName,
-      dateOfBirth,
-      phoneNumber,
+      email, password, confirmPassword, firstName, lastName, dateOfBirth, phoneNumber,
     });
     return response.data;
   },
 
   signin: async (email, password) => {
-    const response = await api.post("/auth/signin", {
-      email,
-      password,
-    });
+    const response = await api.post("/auth/signin", { email, password });
     return response.data;
   },
 
@@ -77,9 +66,14 @@ export const authAPI = {
     const response = await api.post("/auth/verify");
     return response.data;
   },
+
+  checkEmail: async (email) => {
+    const response = await api.post("/auth/check-email", { email });
+    return response.data;
+  },
 };
 
-// Study Groups API
+// Groups API
 export const groupsAPI = {
   createGroup: async (groupData) => {
     const response = await api.post("/groups/create", groupData);
@@ -91,107 +85,58 @@ export const groupsAPI = {
     return response.data;
   },
 
-  // FIXED: Changed from /my-groups to /groups/my-groups to match server route
   getMyGroups: async () => {
     const response = await api.get("/groups/my-groups");
     return response.data;
   },
 
-  joinGroup: async (groupId, message = "") => {
-    const response = await api.post(`/groups/${groupId}/join`, { message });
-    return response.data;
-  },
-
-  getGroupDetails: async (groupId) => {
+  getGroupById: async (groupId) => {
     const response = await api.get(`/groups/${groupId}`);
     return response.data;
   },
 
-  // Join Request APIs
+  addResource: async (groupId, resourceData) => {
+    const response = await api.post(`/groups/${groupId}/resources`, resourceData);
+    return response.data;
+  },
+
+  deleteResource: async (groupId, resourceId) => {
+    const response = await api.delete(`/groups/${groupId}/resources/${resourceId}`);
+    return response.data;
+  },
+
+  submitJoinRequest: async (groupId, message) => {
+    const response = await api.post(`/groups/${groupId}/join`, { message });
+    return response.data;
+  },
+
   getJoinRequests: async (groupId) => {
     const response = await api.get(`/groups/${groupId}/join-requests`);
     return response.data;
   },
 
-  approveJoinRequest: async (requestId) => {
-    const response = await api.post(
-      `/groups/join-requests/${requestId}/approve`
-    );
+  approveJoinRequest: async (requestId, groupId, userId) => {
+    const response = await api.post(`/groups/join-requests/${requestId}/approve`, {
+      group_id: groupId, user_id: userId,
+    });
     return response.data;
   },
 
-  rejectJoinRequest: async (requestId, rejectionReason = "") => {
-    const response = await api.post(
-      `/groups/join-requests/${requestId}/reject`,
-      {
-        rejection_reason: rejectionReason,
-      }
-    );
+  rejectJoinRequest: async (requestId) => {
+    const response = await api.post(`/groups/join-requests/${requestId}/reject`);
     return response.data;
   },
 
-  getJoinStatus: async (groupId) => {
-    const response = await api.get(`/groups/${groupId}/join-status`);
-    return response.data;
-  },
-
-  // Group Management APIs
-  generateMeetingLink: async (groupId) => {
-    const response = await api.post(`/groups/${groupId}/meeting-link`);
-    return response.data;
-  },
-
-  removeMember: async (groupId, memberId) => {
-    const response = await api.delete(`/groups/${groupId}/members/${memberId}`);
-    return response.data;
-  },
-
-  // Invitation APIs
-  sendInvitation: async (groupId, email) => {
-    const response = await api.post(`/groups/${groupId}/invite`, { email });
-    return response.data;
-  },
-
-  acceptInvitation: async (token) => {
-    const response = await api.post(`/groups/invitations/${token}/accept`);
-    return response.data;
-  },
-
-  getInvitations: async (groupId) => {
-    const response = await api.get(`/groups/${groupId}/invitations`);
-    return response.data;
-  },
-
-  // Resources APIs
-  addResource: async (groupId, resourceData) => {
-    const response = await api.post(
-      `/groups/${groupId}/resources`,
-      resourceData
-    );
-    return response.data;
-  },
-
-  removeResource: async (groupId, resourceId) => {
-    const response = await api.delete(
-      `/groups/${groupId}/resources/${resourceId}`
-    );
-    return response.data;
-  },
-
-  // Discussion APIs
   getDiscussion: async (groupId) => {
     const response = await api.get(`/groups/${groupId}/discussions`);
     return response.data;
   },
 
   addMessage: async (groupId, message) => {
-    const response = await api.post(`/groups/${groupId}/discussions/messages`, {
-      message,
-    });
+    const response = await api.post(`/groups/${groupId}/discussions/messages`, { message });
     return response.data;
   },
 
-  // Notes APIs
   getNotes: async (groupId) => {
     const response = await api.get(`/groups/${groupId}/notes`);
     return response.data;
@@ -240,44 +185,37 @@ export const adminAPI = {
 
 // Authentication utilities
 export const authUtils = {
-  // Check if user is authenticated
   isAuthenticated: () => {
     const token = localStorage.getItem("authToken");
     const userData = localStorage.getItem("userData");
     return !!(token && userData);
   },
 
-  // Get stored user data
   getUser: () => {
     const userData = localStorage.getItem("userData");
     return userData ? JSON.parse(userData) : null;
   },
 
-  // Get stored auth token
   getToken: () => {
     return localStorage.getItem("authToken");
   },
 
-  // Store authentication data
   setAuth: (token, user) => {
     localStorage.setItem("authToken", token);
     localStorage.setItem("userData", JSON.stringify(user));
   },
 
-  // Clear authentication data
   clearAuth: () => {
     localStorage.removeItem("authToken");
     localStorage.removeItem("userData");
   },
 
-  // Check if user is super admin
   isSuperAdmin: () => {
     const user = authUtils.getUser();
     return user?.is_super_admin === true;
   },
 };
 
-// Error handling helper
 export const handleAPIError = (error, defaultMessage = "An error occurred") => {
   if (error.response?.data?.message) {
     return error.response.data.message;
@@ -288,5 +226,4 @@ export const handleAPIError = (error, defaultMessage = "An error occurred") => {
   }
 };
 
-// Export default api instance for custom requests
 export default api;
