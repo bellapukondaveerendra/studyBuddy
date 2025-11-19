@@ -75,7 +75,7 @@ const GroupDetail = ({ groupId, onNavigate }) => {
     setError(null);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`/api/groups/${groupId}`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -104,7 +104,7 @@ const GroupDetail = ({ groupId, onNavigate }) => {
     setAddingResource(true);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`/api/groups/${groupId}/resources`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/resources`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -147,14 +147,14 @@ const GroupDetail = ({ groupId, onNavigate }) => {
     try {
       const token = localStorage.getItem("authToken");
       const response = await fetch(
-        `/api/groups/${groupId}/resources/${resourceId}`,
-        {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+  `${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/resources/${resourceId}`,
+  {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
+);
 
       if (response.ok) {
         await fetchGroupDetails(); // Refresh to remove deleted resource
@@ -180,7 +180,7 @@ const GroupDetail = ({ groupId, onNavigate }) => {
 
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`/api/groups/${groupId}/join-requests`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/join-requests`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -213,9 +213,7 @@ const GroupDetail = ({ groupId, onNavigate }) => {
     setProcessingRequest(requestId);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(
-        `/api/groups/join-requests/${requestId}/approve`,
-        {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/join-requests/${requestId}/approve`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -247,9 +245,7 @@ const GroupDetail = ({ groupId, onNavigate }) => {
     setProcessingRequest(requestId);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(
-        `/api/groups/join-requests/${requestId}/reject`,
-        {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/join-requests/${requestId}/reject`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -281,16 +277,16 @@ const GroupDetail = ({ groupId, onNavigate }) => {
     setInvitingMember(true);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`/api/groups/${groupId}/invite`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          email: newMemberEmail.trim(),
-        }),
-      });
+      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/invite`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  },
+  body: JSON.stringify({
+    email: newMemberEmail.trim(),
+  }),
+});
 
       if (response.ok) {
         setNewMemberEmail("");
@@ -311,12 +307,12 @@ const GroupDetail = ({ groupId, onNavigate }) => {
     setGeneratingLink(true);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`/api/groups/${groupId}/meeting-link`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/meeting-link`, {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
 
       if (response.ok) {
         await fetchGroupDetails(); // Refresh to get new meeting link

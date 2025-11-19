@@ -55,7 +55,7 @@ const FindGroups = ({ onNavigate }) => {
       setLoading(true);
       const token = localStorage.getItem("authToken");
 
-      const response = await fetch("/api/findGroups", {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/findGroups`, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -160,7 +160,7 @@ const FindGroups = ({ onNavigate }) => {
       setJoiningGroup(groupId);
       try {
         const token = localStorage.getItem("authToken");
-        const response = await fetch(`/api/groups/${groupId}/join`, {
+        const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/join`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,

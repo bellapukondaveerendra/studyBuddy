@@ -23,7 +23,9 @@ const SUPER_ADMIN_EMAILS = [
 // ========== MIDDLEWARE - ORDER MATTERS! ==========
 // CORS must come FIRST
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5000'],
+  origin: process.env.CORS_ORIGIN 
+    ? process.env.CORS_ORIGIN.split(',') 
+    : ['http://localhost:3000', 'http://localhost:5000'],
   credentials: true
 }));
 
@@ -786,24 +788,19 @@ app.get("/api/stats", authenticateToken, async (req, res) => {
     });
   }
 });
-// 404 handler for API routes
-// app.use("/api/*", (req, res) => {
-//   console.log(`❌ 404 - API Route not found: ${req.method} ${req.path}`);
-//   res.status(404).json({
-//     success: false,
-//     message: `Route ${req.method} ${req.originalUrl} not found`,
-//   });
-// });
 
 // ========== STATIC FILES - MUST COME LAST ==========
 
 if (process.env.NODE_ENV === "production") {
+  // Serve static files from React build
   app.use(express.static(path.join(__dirname, "../build")));
-  app.get("*", (req, res) => {
+  
+  // Catch-all route for React Router - must be LAST
+  app.get("/{*any}", (req, res) => {
+    // Only serve index.html for non-API routes
     if (!req.path.startsWith("/api/")) {
       res.sendFile(path.join(__dirname, "../build/index.html"));
     }
-    res.sendFile(path.join(__dirname, "../build/index.html"));
   });
 }
 

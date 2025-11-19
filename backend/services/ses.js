@@ -67,7 +67,9 @@ const sesService = {
 
   // Send group invitation email
   sendGroupInvitation: async (inviterData, groupData, inviteeEmail) => {
-    const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const baseUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' 
+  ? 'http://YOUR_EC2_PUBLIC_IP' 
+  : 'http://localhost:3000');
     const invitationToken = require("crypto").randomBytes(32).toString("hex");
     const invitationLink = `${baseUrl}/accept-invitation?token=${invitationToken}&email=${encodeURIComponent(
       inviteeEmail

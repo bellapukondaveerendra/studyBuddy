@@ -37,11 +37,11 @@ const Home = ({ onNavigate }) => {
     setLoading(true);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch("/api/groups/my-groups", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/my-groups`, {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
 
       if (response.ok) {
         const data = await response.json();

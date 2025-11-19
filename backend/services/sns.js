@@ -55,7 +55,9 @@ const snsService = {
   // Send group invitation email
   sendGroupInvitation: async (inviterData, groupData, inviteeEmail, invitationToken) => {
     try {
-      const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+      const baseUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' 
+        ? 'http://44.222.102.46' 
+        : 'http://localhost:3000');
       const invitationLink = `${baseUrl}/accept-invitation?token=${invitationToken}&email=${encodeURIComponent(
         inviteeEmail
       )}`;

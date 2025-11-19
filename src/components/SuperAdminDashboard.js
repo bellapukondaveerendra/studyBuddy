@@ -72,7 +72,7 @@ const SuperAdminDashboard = () => {
 
       // Fetch groups with better error handling
       try {
-        const groupsResponse = await fetch("/api/admin/groups", {
+        const groupsResponse = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/admin/groups`, {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
@@ -140,7 +140,7 @@ const SuperAdminDashboard = () => {
 
       // Fetch users with better error handling
       try {
-        const usersResponse = await fetch("/api/admin/users", {
+        const usersResponse = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/admin/users`, {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
@@ -210,7 +210,7 @@ const SuperAdminDashboard = () => {
     setProcessingAction(groupId);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`/api/admin/groups/${groupId}/approve`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/admin/groups/${groupId}/approve`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -237,9 +237,7 @@ const SuperAdminDashboard = () => {
     setProcessingAction(selectedGroup.group_id);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(
-        `/api/admin/groups/${selectedGroup.group_id}/reject`,
-        {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/admin/groups/${selectedGroup.group_id}/reject`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -280,12 +278,12 @@ const SuperAdminDashboard = () => {
     setProcessingAction(groupId);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`/api/admin/groups/${groupId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/admin/groups/${groupId}`, {
+  method: "DELETE",
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
 
       if (response.ok) {
         await fetchData(); // Refresh data
@@ -313,12 +311,12 @@ const SuperAdminDashboard = () => {
     setProcessingAction(`user-${userId}`);
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(`/api/admin/users/${userId}/promote`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/admin/users/${userId}/promote`, {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
 
       if (response.ok) {
         await fetchData(); // Refresh data

@@ -18,16 +18,16 @@ const VerifyEmail = ({ email, onVerified, onBack }) => {
     setMessage({ text: "", type: "" });
 
     try {
-      const response = await fetch("/api/auth/confirm", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: email,
-          code: code.trim(),
-        }),
-      });
+const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/auth/confirm`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    email: email,
+    code: code.trim(),
+  }),
+});
 
       const data = await response.json();
 
@@ -52,15 +52,15 @@ const VerifyEmail = ({ email, onVerified, onBack }) => {
     setMessage({ text: "", type: "" });
 
     try {
-      const response = await fetch("/api/auth/resend-code", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: email,
-        }),
-      });
+const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/auth/resend-code`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    email: email,
+  }),
+});
 
       const data = await response.json();
 
