@@ -26,3 +26,5 @@ backend/node_modules
 *.db
 .env
 package-lock.json
+
+*.pem
