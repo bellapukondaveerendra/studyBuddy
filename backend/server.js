@@ -162,9 +162,11 @@ app.post("/api/auth/signup", async (req, res) => {
         message: "Email already exists. Please use a different email.",
       });
     }
+
+    console.error("Signup error:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error. Please try again.",
+      message: "Internal server error. Please try again." + error.message,
     });
   }
 });

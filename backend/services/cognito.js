@@ -40,10 +40,32 @@ const computeSecretHash = (username) => {
     .digest("base64");
 };
 
+
+const formatPhoneNumber = (phoneNumber) => {
+  if (!phoneNumber || phoneNumber.trim() === '') {
+    return null; // Return null for empty phone numbers
+  }
+
+  // Remove all non-digit characters
+  let cleaned = phoneNumber.replace(/\D/g, '');
+
+  // If number already has country code (11+ digits), add + prefix
+  if (cleaned.length >= 10) {
+    // If it doesn't start with 1 (US country code) and is 10 digits, assume US
+    if (!cleaned.startsWith('1') && cleaned.length === 10) {
+      cleaned = '1' + cleaned;
+    }
+    return '+' + cleaned;
+  }
+
+  // If number is invalid, return null
+  return null;
+};
 const cognitoService = {
   // Sign Up User
   signUp: async (email, password, firstName, lastName, dateOfBirth, phoneNumber) => {
     try {
+      const formattedPhone = formatPhoneNumber(phoneNumber);
       const params = {
         ClientId: CLIENT_ID,
         Username: email,
@@ -53,7 +75,7 @@ const cognitoService = {
           { Name: "given_name", Value: firstName },
           { Name: "family_name", Value: lastName },
           { Name: "birthdate", Value: dateOfBirth },
-          ...(phoneNumber ? [{ Name: "phone_number", Value: phoneNumber }] : []),
+          ...(formattedPhone ? [{ Name: "phone_number", Value: formattedPhone }] : []),
         ],
         SecretHash: computeSecretHash(email),
       };
