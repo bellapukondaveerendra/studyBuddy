@@ -408,67 +408,79 @@ const fetchJoinRequests = async () => {
     }
   };
 
-  const handleApproveJoinRequest = async (requestId) => {
-    setProcessingRequest(requestId);
-    try {
-      const token = localStorage.getItem("authToken");
-      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/join-requests/${requestId}/approve`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        await fetchJoinRequests(); // Refresh join requests
-        await fetchGroupDetails(); // Refresh group details to update member count
-        alert("Join request approved successfully!");
-      } else {
-        const error = await response.json();
-        alert(`Failed to approve request: ${error.message}`);
+const handleApproveJoinRequest = async (request) => {
+  setProcessingRequest(request.request_id);
+  
+  try {
+    const token = localStorage.getItem("authToken");
+    const response = await fetch(
+      `${process.env.REACT_APP_API_URL || '/api'}/groups/join-requests/${request.request_id}/approve`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          group_id: request.group_id,
+          user_id: request.user_id,
+        }),
       }
-    } catch (error) {
-      console.error("Error approving join request:", error);
-      alert("Failed to approve request. Please try again.");
-    }
-    setProcessingRequest(null);
-  };
-
-  const handleRejectJoinRequest = async (requestId, userEmail) => {
-    const reason = window.prompt(
-      `Rejecting join request from ${userEmail}.\nOptional reason for rejection:`
     );
-    if (reason === null) return; // User cancelled
 
-    setProcessingRequest(requestId);
-    try {
-      const token = localStorage.getItem("authToken");
-      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/join-requests/${requestId}/reject`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            rejection_reason: reason,
-          }),
-        }
-      );
-
-      if (response.ok) {
-        await fetchJoinRequests(); // Refresh join requests
-        alert("Join request rejected successfully!");
-      } else {
-        const error = await response.json();
-        alert(`Failed to reject request: ${error.message}`);
-      }
-    } catch (error) {
-      console.error("Error rejecting join request:", error);
-      alert("Failed to reject request. Please try again.");
+    if (response.ok) {
+      await fetchJoinRequests(); // Refresh join requests
+      await fetchGroupDetails(); // Refresh group details
+      alert("Join request approved successfully!");
+    } else {
+      const error = await response.json();
+      alert(`Failed to approve request: ${error.message}`);
     }
+  } catch (error) {
+    console.error("Error approving join request:", error);
+    alert("Failed to approve request. Please try again.");
+  } finally {
     setProcessingRequest(null);
-  };
+  }
+};
+const handleRejectJoinRequest = async (request) => {
+  const reason = window.prompt(
+    `Rejecting join request from ${request.user_email || 'user'}.\nOptional reason for rejection:`
+  );
+  if (reason === null) return; // User cancelled
+
+  setProcessingRequest(request.request_id);
+  
+  try {
+    const token = localStorage.getItem("authToken");
+    const response = await fetch(
+      `${process.env.REACT_APP_API_URL || '/api'}/groups/join-requests/${request.request_id}/reject`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          rejection_reason: reason,
+        }),
+      }
+    );
+
+    if (response.ok) {
+      await fetchJoinRequests(); // Refresh join requests
+      alert("Join request rejected successfully!");
+    } else {
+      const error = await response.json();
+      alert(`Failed to reject request: ${error.message}`);
+    }
+  } catch (error) {
+    console.error("Error rejecting join request:", error);
+    alert("Failed to reject request. Please try again.");
+  } finally {
+    setProcessingRequest(null);
+  }
+};
 
   const handleInviteMember = async () => {
     if (!newMemberEmail.trim()) return;
@@ -837,7 +849,7 @@ const fetchJoinRequests = async () => {
                         <div className="request-actions">
                           <button
                             onClick={() =>
-                              handleApproveJoinRequest(request.request_id)
+                              handleApproveJoinRequest(request)
                             }
                             disabled={processingRequest === request._id}
                             className="btn btn-approve"
@@ -850,8 +862,7 @@ const fetchJoinRequests = async () => {
                           <button
                             onClick={() =>
                               handleRejectJoinRequest(
-                                request.request_id,
-                                request.user_email
+                                request
                               )
                             }
                             disabled={processingRequest === request._id}
@@ -1308,7 +1319,7 @@ const fetchJoinRequests = async () => {
                           <div className="request-actions">
                             <button
                               onClick={() =>
-                                handleApproveJoinRequest(request.request_id)
+                                handleApproveJoinRequest(request)
                               }
                               disabled={processingRequest === request._id}
                               className="btn btn-approve"
@@ -1321,8 +1332,7 @@ const fetchJoinRequests = async () => {
                             <button
                               onClick={() =>
                                 handleRejectJoinRequest(
-                                  request.request_id,
-                                  request.user_email
+                                  request
                                 )
                               }
                               disabled={processingRequest === request._id}
@@ -1360,7 +1370,7 @@ const fetchJoinRequests = async () => {
                                 )
                               ) {
                                 joinRequests.forEach((req) =>
-                                  handleApproveJoinRequest(req.request_id)
+                                  handleApproveJoinRequest(req)
                                 );
                               }
                             }}
@@ -1379,8 +1389,7 @@ const fetchJoinRequests = async () => {
                               ) {
                                 joinRequests.forEach((req) =>
                                   handleRejectJoinRequest(
-                                    req.request_id,
-                                    req.user_email
+                                    req
                                   )
                                 );
                               }
