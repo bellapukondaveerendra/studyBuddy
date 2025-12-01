@@ -67,9 +67,18 @@ const GroupDetail = ({ groupId, onNavigate }) => {
 
   useEffect(() => {
     if (group?.current_user_is_admin) {
+      console.log("🔑 User is admin, fetching join requests");
       fetchJoinRequests();
     }
   }, [group?.current_user_is_admin, activeTab]);
+
+  useEffect(() => {
+    console.log("🔄 Active tab changed to:", activeTab);
+    console.log("Current group state:", group);
+  if (group && (activeTab === "approvals" || activeTab === "members")) {
+    fetchJoinRequests();
+  }
+}, [group, activeTab, groupId]);
 
   const fetchGroupDetails = async () => {
     setLoading(true);
@@ -84,6 +93,7 @@ const GroupDetail = ({ groupId, onNavigate }) => {
 
       if (response.ok) {
         const data = await response.json();
+    console.log("Current group state datatat:", data.group);
         setGroup(data.group);
       } else {
         const errorData = await response.json();
@@ -350,38 +360,46 @@ const getResourceUrl = async (s3Key) => {
     }
   };
 
-  const fetchJoinRequests = async () => {
-    if (!group?.current_user_is_admin) {
-      console.log("❌ User is not admin, cannot fetch join requests");
-      return;
-    }
+const fetchJoinRequests = async () => {
+  console.log("🔄 Fetching join requests for group:", groupId);
+  console.log("Group admin status:", group?.current_user_is_admin);
+  
+  setLoadingJoinRequests(true);
 
-    console.log("🔄 Fetching join requests for group:", groupId);
-    setLoadingJoinRequests(true);
-
-    try {
-      const token = localStorage.getItem("authToken");
-      const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/join-requests`, {
+  try {
+    const token = localStorage.getItem("authToken");
+    const response = await fetch(
+      `${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/join-requests`,
+      {
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      });
-
-      console.log("📡 Join requests response status:", response.status);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("✅ Join requests data:", data);
-        setJoinRequests(data.join_requests || []);
-      } else {
-        const errorData = await response.json();
-        console.error("❌ Failed to fetch join requests:", errorData);
       }
-    } catch (error) {
-      console.error("❌ Error fetching join requests:", error);
+    );
+
+    console.log("📡 Join requests response status:", response.status);
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log("✅ Full response data:", data);
+      
+      // Fix: backend returns 'requests', not 'join_requests'
+      const requests = data.requests || data.join_requests || [];
+      console.log(`Found ${requests.length} join requests:`, requests);
+      
+      setJoinRequests(requests);
+    } else {
+      const errorData = await response.json();
+      console.error("❌ Failed to fetch join requests:", errorData);
+      setJoinRequests([]);
     }
+  } catch (error) {
+    console.error("❌ Error fetching join requests:", error);
+    setJoinRequests([]);
+  } finally {
     setLoadingJoinRequests(false);
-  };
+  }
+};
   const handleBackClick = () => {
     if (onNavigate) {
       onNavigate("home");
@@ -819,7 +837,7 @@ const getResourceUrl = async (s3Key) => {
                         <div className="request-actions">
                           <button
                             onClick={() =>
-                              handleApproveJoinRequest(request._id)
+                              handleApproveJoinRequest(request.request_id)
                             }
                             disabled={processingRequest === request._id}
                             className="btn btn-approve"
@@ -832,7 +850,7 @@ const getResourceUrl = async (s3Key) => {
                           <button
                             onClick={() =>
                               handleRejectJoinRequest(
-                                request._id,
+                                request.request_id,
                                 request.user_email
                               )
                             }
@@ -1258,10 +1276,7 @@ const getResourceUrl = async (s3Key) => {
 
                     <div className="requests-grid">
                       {joinRequests.map((request) => (
-                        <div
-                          key={request._id}
-                          className="approval-request-card"
-                        >
+                        <div key={request.request_id} className="approval-request-card">
                           <div className="request-header">
                             <div className="user-info">
                               <div className="user-avatar">
@@ -1293,7 +1308,7 @@ const getResourceUrl = async (s3Key) => {
                           <div className="request-actions">
                             <button
                               onClick={() =>
-                                handleApproveJoinRequest(request._id)
+                                handleApproveJoinRequest(request.request_id)
                               }
                               disabled={processingRequest === request._id}
                               className="btn btn-approve"
@@ -1306,7 +1321,7 @@ const getResourceUrl = async (s3Key) => {
                             <button
                               onClick={() =>
                                 handleRejectJoinRequest(
-                                  request._id,
+                                  request.request_id,
                                   request.user_email
                                 )
                               }
@@ -1345,7 +1360,7 @@ const getResourceUrl = async (s3Key) => {
                                 )
                               ) {
                                 joinRequests.forEach((req) =>
-                                  handleApproveJoinRequest(req._id)
+                                  handleApproveJoinRequest(req.request_id)
                                 );
                               }
                             }}
@@ -1364,7 +1379,7 @@ const getResourceUrl = async (s3Key) => {
                               ) {
                                 joinRequests.forEach((req) =>
                                   handleRejectJoinRequest(
-                                    req._id,
+                                    req.request_id,
                                     req.user_email
                                   )
                                 );

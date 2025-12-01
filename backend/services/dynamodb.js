@@ -710,6 +710,7 @@ getAllGroupsForSuperAdmin: async () => {
       };
 
       await dynamoClient.send(new PutItemCommand(params));
+      console.log("Join request submitted:", joinRequest);
       return { success: true, request: joinRequest };
     } catch (error) {
       console.error("Submit join request error:", error);
@@ -717,28 +718,57 @@ getAllGroupsForSuperAdmin: async () => {
     }
   },
 
-  // Get group join requests
-  getGroupJoinRequests: async (groupId) => {
-    try {
-      const params = {
-        TableName: TABLES.JOIN_REQUESTS,
-        IndexName: "GroupIdIndex",
-        KeyConditionExpression: "group_id = :groupId",
-        FilterExpression: "#status = :status",
-        ExpressionAttributeNames: { "#status": "status" },
-        ExpressionAttributeValues: marshall({
-          ":groupId": groupId,
-          ":status": "pending",
-        }),
-      };
+getGroupJoinRequests: async (groupId) => {
+  try {
+    console.log(`🔍 Fetching join requests for group: ${groupId}`);
+    
+    // Use Scan for reliability
+    const scanParams = {
+      TableName: TABLES.JOIN_REQUESTS,
+      FilterExpression: "group_id = :groupId AND #status = :status",
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: marshall({
+        ":groupId": groupId,
+        ":status": "pending",
+      }),
+    };
 
-      const result = await dynamoClient.send(new QueryCommand(params));
-      return result.Items ? result.Items.map((item) => unmarshall(item)) : [];
-    } catch (error) {
-      console.error("Get join requests error:", error);
-      return [];
-    }
-  },
+    const scanResult = await dynamoClient.send(new ScanCommand(scanParams));
+    let requests = scanResult.Items ? scanResult.Items.map((item) => unmarshall(item)) : [];
+    
+    console.log(`✅ Found ${requests.length} pending join requests`);
+    console.log('Requests:', requests);
+    
+    // Enrich with user information
+    const { cognitoService } = require('./cognito');
+    
+    const enrichedRequests = await Promise.all(
+      requests.map(async (request) => {
+        try {
+          const user = await cognitoService.getUserById(request.user_id);
+          return {
+            ...request,
+            user_email: user.email,
+            user_name: `${user.first_name} ${user.last_name}`,
+          };
+        } catch (error) {
+          console.error(`Failed to get user info for ${request.user_id}:`, error.message);
+          return {
+            ...request,
+            user_email: request.user_id,
+            user_name: 'Unknown User',
+          };
+        }
+      })
+    );
+    
+    return enrichedRequests;
+    
+  } catch (error) {
+    console.error("❌ Get join requests error:", error);
+    return [];
+  }
+},
 
   // Approve join request
   approveJoinRequest: async (requestId, groupId, userId) => {
