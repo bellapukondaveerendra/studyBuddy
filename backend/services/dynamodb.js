@@ -788,6 +788,106 @@ getAllGroupsForSuperAdmin: async () => {
       throw new Error("Failed to reject join request");
     }
   },
+
+  // ADMIN: Remove group member
+  adminRemoveGroupMember: async (groupId, userId) => {
+    try {
+      const params = {
+        TableName: TABLES.MEMBERS,
+        Key: {
+          group_id: groupId,
+          user_id: userId,
+        },
+      };
+
+      const command = new DeleteCommand(params);
+      await dynamoClient.send(command);
+
+      return {
+        success: true,
+        message: "Member removed successfully",
+      };
+    } catch (error) {
+      console.error("Admin remove member error:", error);
+      throw new Error("Failed to remove member");
+    }
+  },
+
+  // ADMIN: Remove group resource
+adminRemoveGroupResource: async (groupId, resourceId) => {
+  try {
+    // Get the group first
+    const getParams = {
+      TableName: TABLES.GROUPS,
+      Key: marshall({ group_id: groupId }),
+    };
+
+    const getResult = await dynamoClient.send(new GetItemCommand(getParams));
+    
+    if (!getResult.Item) {
+      throw new Error("Group not found");
+    }
+
+    const group = unmarshall(getResult.Item);
+    
+    if (!group.resources || group.resources.length === 0) {
+      throw new Error("No resources found in group");
+    }
+
+    // Find the resource to check if it has S3 key
+    const resource = group.resources.find(r => r.resource_id === resourceId);
+    
+    if (!resource) {
+      throw new Error("Resource not found");
+    }
+
+    // Remove from resources array
+    const updatedResources = group.resources.filter(
+      (r) => r.resource_id !== resourceId
+    );
+
+    // Update group with new resources array
+    const updateParams = {
+      TableName: TABLES.GROUPS,
+      Key: marshall({ group_id: groupId }),
+      UpdateExpression: "SET resources = :resources, updated_at = :updated_at",
+      ExpressionAttributeValues: marshall({
+        ":resources": updatedResources,
+        ":updated_at": new Date().toISOString(),
+      }),
+    };
+
+    await dynamoClient.send(new UpdateItemCommand(updateParams));
+
+    // If it's an S3 file, delete from S3
+    if (resource.url && (resource.url.includes('s3.amazonaws.com') || resource.url.includes('s3.us-east-1.amazonaws.com'))) {
+      try {
+        // Import s3Service at the top of the file if not already imported
+        const { s3Service } = require('./s3');
+        
+        // Extract S3 key from URL
+        const urlParts = resource.url.split('.com/')[1];
+        const s3Key = urlParts ? urlParts.split('?')[0] : null;
+        
+        if (s3Key) {
+          await s3Service.deleteFile(s3Key);
+          console.log(`✅ Deleted S3 file: ${s3Key}`);
+        }
+      } catch (s3Error) {
+        console.error("Failed to delete S3 file:", s3Error);
+        // Continue anyway since DB is updated
+      }
+    }
+
+    return {
+      success: true,
+      message: "Resource removed successfully",
+    };
+  } catch (error) {
+    console.error("Admin remove resource error:", error);
+    throw new Error("Failed to remove resource");
+  }
+},
 };
 
 module.exports = { dynamoService, TABLES };

@@ -8,8 +8,7 @@ import {
   User,
   CheckCircle,
   XCircle,
-  Calendar,
-  Phone,
+  Calendar
 } from "lucide-react";
 import { authAPI, authUtils } from "./services/api";
 import Home from "./components/Home";
@@ -189,7 +188,6 @@ function App() {
       firstName: "",
       lastName: "",
       dateOfBirth: "",
-      phoneNumber: "",
     });
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -254,8 +252,7 @@ function App() {
           formData.confirmPassword,
           formData.firstName,
           formData.lastName,
-          formData.dateOfBirth,
-          formData.phoneNumber
+          formData.dateOfBirth
         );
 
         if (response.success) {
@@ -380,23 +377,6 @@ function App() {
                   }
                   className="auth-input"
                   placeholder="Enter your email"
-                />
-              </div>
-            </div>
-
-            {/* Phone Number (Optional) */}
-            <div className="input-group">
-              <label className="input-label">Phone Number (Optional)</label>
-              <div className="input-container">
-                <Phone size={20} className="input-icon-left" />
-                <input
-                  type="tel"
-                  value={formData.phoneNumber}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phoneNumber: e.target.value })
-                  }
-                  className="auth-input"
-                  placeholder="Enter your phone number"
                 />
               </div>
             </div>

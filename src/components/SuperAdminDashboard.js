@@ -15,6 +15,9 @@ import {
   Filter,
   Search,
   RefreshCw,
+  LogOut,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import "./SuperAdminDashboard.css";
 
@@ -29,10 +32,22 @@ const SuperAdminDashboard = () => {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
+  const [viewingGroup, setViewingGroup] = useState(null);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [groupResources, setGroupResources] = useState([]);
+  const [expandedGroups, setExpandedGroups] = useState({});
 
   useEffect(() => {
     fetchData();
   }, []);
+
+
+  const toggleGroupExpanded = (groupId) => {
+  setExpandedGroups(prev => ({
+    ...prev,
+    [groupId]: !prev[groupId]
+  }));
+};
 
   const fetchData = async () => {
     setLoading(true);
@@ -205,6 +220,13 @@ const SuperAdminDashboard = () => {
     }
     setLoading(false);
   };
+  const handleLogout = () => {
+  if (window.confirm("Are you sure you want to logout?")) {
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("userData");
+    window.location.href = "/";
+  }
+};
 
   const handleApproveGroup = async (groupId) => {
     setProcessingAction(groupId);
@@ -298,6 +320,132 @@ const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/admin/g
     }
     setProcessingAction(null);
   };
+
+  const handleDeleteResource = async (groupId, resourceId, resourceTitle) => {
+  if (!window.confirm(`Delete resource "${resourceTitle}"?\n\nThis action cannot be undone.`)) {
+    return;
+  }
+
+  setProcessingAction(resourceId);
+
+  try {
+    const token = localStorage.getItem("authToken");
+    const response = await fetch(
+      `${process.env.REACT_APP_API_URL || "/api"}/admin/groups/${groupId}/resources/${resourceId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      alert("Resource deleted successfully");
+      await fetchData(); // Refresh groups list
+    } else {
+      alert(data.message || "Failed to delete resource");
+    }
+  } catch (error) {
+    console.error("Delete resource error:", error);
+    alert("Failed to delete resource. Please try again.");
+  } finally {
+    setProcessingAction(null);
+  }
+};
+
+  // Add function to view group details:
+const viewGroupDetails = async (group) => {
+  setViewingGroup(group);
+  
+  // Fetch group members
+  try {
+    const token = localStorage.getItem("authToken");
+    const membersResponse = await fetch(
+      `${process.env.REACT_APP_API_URL || "/api"}/groups/${group.group_id}/members`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    const membersData = await membersResponse.json();
+    setGroupMembers(membersData.members || []);
+    setGroupResources(group.resources || []);
+  } catch (error) {
+    console.error("Error fetching group details:", error);
+  }
+};
+
+// Add function to remove member:
+const handleRemoveMember = async (groupId, userId, memberEmail) => {
+  if (!window.confirm(`Remove member "${memberEmail}" from this group?`)) {
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem("authToken");
+    const response = await fetch(
+      `${process.env.REACT_APP_API_URL || "/api"}/admin/groups/${groupId}/members/${userId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      alert("Member removed successfully");
+      viewGroupDetails(viewingGroup); // Refresh
+    } else {
+      alert(data.message || "Failed to remove member");
+    }
+  } catch (error) {
+    console.error("Remove member error:", error);
+    alert("Failed to remove member");
+  }
+};
+
+// Add function to remove resource:
+const handleRemoveResource = async (groupId, resourceId, resourceTitle) => {
+  if (!window.confirm(`Remove resource "${resourceTitle}"?`)) {
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem("authToken");
+    const response = await fetch(
+      `${process.env.REACT_APP_API_URL || "/api"}/admin/groups/${groupId}/resources/${resourceId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      alert("Resource removed successfully");
+      await fetchData(); // Refresh all data
+      if (viewingGroup) {
+        const updatedGroup = groups.find(g => g.group_id === groupId);
+        if (updatedGroup) viewGroupDetails(updatedGroup);
+      }
+    } else {
+      alert(data.message || "Failed to remove resource");
+    }
+  } catch (error) {
+    console.error("Remove resource error:", error);
+    alert("Failed to remove resource");
+  }
+};
 
   const handlePromoteUser = async (userId, userEmail) => {
     if (
@@ -411,21 +559,70 @@ const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/admin/u
   const totalUsers = users.length;
   const superAdminCount = users.filter((u) => u.is_super_admin).length;
 
+  const handleDeleteUser = async (userId, email) => {
+  const confirmDelete = window.confirm(
+    `Are you sure you want to delete user "${email}"?\n\nThis action CANNOT be undone. The user will lose access immediately.`
+  );
+
+  if (!confirmDelete) return;
+
+  const confirmAgain = window.confirm(
+    `FINAL CONFIRMATION: Delete user "${email}"?`
+  );
+
+  if (!confirmAgain) return;
+
+  setProcessingAction(userId);
+
+  try {
+    const response = await fetch(
+      `${process.env.REACT_APP_API_URL || "/api"}/admin/users/${userId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      alert(`User "${email}" has been deleted successfully.`);
+      await fetchData(); // Refresh the users list
+    } else {
+      alert(data.message || "Failed to delete user");
+    }
+  } catch (error) {
+    console.error("Delete user error:", error);
+    alert("Failed to delete user. Please try again.");
+  } finally {
+    setProcessingAction(null);
+  }
+};
+
   return (
     <div className="super-admin-dashboard">
-      <div className="admin-header">
-        <div className="header-title">
-          <Shield size={32} />
-          <div>
-            <h1>Super Admin Dashboard</h1>
-            <p>Manage groups, users, and system settings</p>
-          </div>
-        </div>
-        <button onClick={fetchData} className="refresh-btn">
-          <RefreshCw size={16} />
-          Refresh
-        </button>
-      </div>
+<div className="admin-header">
+  <div className="header-title">
+    <Shield size={32} />
+    <div>
+      <h1>Super Admin Dashboard</h1>
+      <p>Manage groups, users, and system settings</p>
+    </div>
+  </div>
+  <div style={{ display: 'flex', gap: '12px' }}>
+    <button onClick={fetchData} className="refresh-btn">
+      <RefreshCw size={16} />
+      Refresh
+    </button>
+    <button onClick={handleLogout} className="logout-btn">
+      <LogOut size={16} />
+      Logout
+    </button>
+  </div>
+</div>
 
       {/* Stats Cards */}
       <div className="stats-grid">
@@ -526,86 +723,153 @@ const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/admin/u
             </div>
           ) : (
             <div className="groups-list">
-              {filteredGroups.map((group) => (
-                <div key={group.group_id} className="group-card">
-                  <div className="group-header">
-                    <div className="group-info">
-                      <h3>{group.name}</h3>
-                      <p className="group-concept">{group.concept}</p>
-                      <div className="group-meta">
-                        <span className="group-level">{group.level}</span>
-                        <span className="group-time">
-                          {group.time_commitment}
-                        </span>
-                        <span className="group-members">
-                          {group.member_count} members
-                        </span>
-                      </div>
-                    </div>
-                    {getStatusBadge(group.status)}
+{filteredGroups.map((group) => (
+  <div key={group.group_id} className="group-card">
+    <div className="group-header">
+      <div className="group-info">
+        <h3>{group.name}</h3>
+        <p className="group-concept">{group.concept}</p>
+        <div className="group-meta">
+          <span className="group-level">{group.level}</span>
+          <span className="group-time">{group.time_commitment}</span>
+          <span className="group-members">
+            {group.member_count || 0} members
+          </span>
+        </div>
+      </div>
+      <div className="status-badge status-{group.status === 'pending_approval' ? 'orange' : group.status === 'active' ? 'green' : group.status === 'rejected' ? 'red' : 'gray'}">
+        {group.status === "pending_approval" && (
+          <>
+            <Clock size={14} />
+            Pending
+          </>
+        )}
+        {group.status === "active" && (
+          <>
+            <CheckCircle size={14} />
+            Active
+          </>
+        )}
+        {group.status === "rejected" && (
+          <>
+            <XCircle size={14} />
+            Rejected
+          </>
+        )}
+      </div>
+    </div>
+
+    <div className="group-details">
+      <div className="detail-item">
+        <Mail size={14} />
+        <span>Creator: {group.creator_email}</span>
+      </div>
+      <div className="detail-item">
+        <Calendar size={14} />
+        <span>Created: {formatDate(group.created_at)}</span>
+      </div>
+      {group.rejection_reason && (
+        <div className="rejection-reason">
+          <strong>Rejection Reason:</strong> {group.rejection_reason}
+        </div>
+      )}
+    </div>
+
+    {/* NEW: Resources Section */}
+    {group.resources && group.resources.length > 0 && (
+      <div className="group-resources-section">
+        <button
+          onClick={() => toggleGroupExpanded(group.group_id)}
+          className="toggle-resources-btn"
+        >
+          <BookOpen size={16} />
+          <span>{group.resources.length} Resources</span>
+          {expandedGroups[group.group_id] ? (
+            <ChevronUp size={16} />
+          ) : (
+            <ChevronDown size={16} />
+          )}
+        </button>
+
+        {expandedGroups[group.group_id] && (
+          <div className="resources-list">
+            {group.resources.map((resource) => (
+              <div key={resource.resource_id} className="resource-item">
+                <div className="resource-info">
+                  <div className="resource-type-badge">
+                    {resource.type}
                   </div>
-
-                  <div className="group-details">
-                    <div className="detail-item">
-                      <Mail size={14} />
-                      <span>Created by: {group.creator_email}</span>
-                    </div>
-                    <div className="detail-item">
-                      <Calendar size={14} />
-                      <span>Created: {formatDate(group.created_at)}</span>
-                    </div>
-                    <div className="detail-item">
-                      <Eye size={14} />
-                      <span>Group ID: {group.group_id}</span>
-                    </div>
-                  </div>
-
-                  {group.status === "rejected" &&
-                    group.approval_status?.rejection_reason && (
-                      <div className="rejection-reason">
-                        <strong>Rejection Reason:</strong>{" "}
-                        {group.approval_status.rejection_reason}
-                      </div>
-                    )}
-
-                  <div className="group-actions">
-                    {group.status === "pending_approval" && (
-                      <>
-                        <button
-                          onClick={() => handleApproveGroup(group.group_id)}
-                          disabled={processingAction === group.group_id}
-                          className="btn btn-approve"
-                        >
-                          <CheckCircle size={16} />
-                          {processingAction === group.group_id
-                            ? "Approving..."
-                            : "Approve"}
-                        </button>
-                        <button
-                          onClick={() => openRejectModal(group)}
-                          disabled={processingAction === group.group_id}
-                          className="btn btn-reject"
-                        >
-                          <XCircle size={16} />
-                          Reject
-                        </button>
-                      </>
-                    )}
-                    <button
-                      onClick={() =>
-                        handleDeleteGroup(group.group_id, group.name)
-                      }
-                      disabled={processingAction === group.group_id}
-                      className="btn btn-delete"
+                  <div className="resource-details">
+                    <strong>{resource.title}</strong>
+                    <a
+                      href={resource.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="resource-link"
                     >
-                      <Trash2 size={16} />
-                      {processingAction === group.group_id
-                        ? "Deleting..."
-                        : "Delete"}
-                    </button>
+                      {resource.url.length > 50
+                        ? resource.url.substring(0, 50) + "..."
+                        : resource.url}
+                    </a>
                   </div>
                 </div>
-              ))}
+                <button
+                  onClick={() =>
+                    handleDeleteResource(
+                      group.group_id,
+                      resource.resource_id,
+                      resource.title
+                    )
+                  }
+                  disabled={processingAction === resource.resource_id}
+                  className="btn-delete-resource"
+                >
+                  <Trash2 size={14} />
+                  {processingAction === resource.resource_id
+                    ? "Deleting..."
+                    : "Delete"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )}
+
+    <div className="group-actions">
+      {group.status === "pending_approval" && (
+        <>
+          <button
+            onClick={() => handleApproveGroup(group.group_id)}
+            disabled={processingAction === group.group_id}
+            className="btn btn-approve"
+          >
+            <CheckCircle size={16} />
+            {processingAction === group.group_id
+              ? "Approving..."
+              : "Approve"}
+          </button>
+          <button
+            onClick={() => openRejectModal(group)}
+            disabled={processingAction === group.group_id}
+            className="btn btn-reject"
+          >
+            <XCircle size={16} />
+            Reject
+          </button>
+        </>
+      )}
+      <button
+        onClick={() => handleDeleteGroup(group.group_id, group.name)}
+        disabled={processingAction === group.group_id}
+        className="btn btn-delete"
+      >
+        <Trash2 size={16} />
+        {processingAction === group.group_id ? "Deleting..." : "Delete"}
+      </button>
+    </div>
+  </div>
+))}
             </div>
           )}
         </div>
@@ -628,7 +892,7 @@ const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/admin/u
           ) : (
             <div className="users-list">
               {filteredUsers.map((user) => (
-                <div key={user.user_id} className="user-card">
+                <div className="user-card">
                   <div className="user-info">
                     <div className="user-avatar">
                       {user.is_super_admin ? (
@@ -645,33 +909,31 @@ const response = await fetch(`${process.env.REACT_APP_API_URL || '/api'}/admin/u
                   </div>
                   <div className="user-status">
                     {user.is_super_admin ? (
-                      <span className="role-badge super-admin">
+                      <span className="status-badge status-admin">
                         <Crown size={14} />
                         Super Admin
                       </span>
                     ) : (
-                      <span className="role-badge regular">
+                      <span className="status-badge status-user">
                         <Users size={14} />
-                        Regular User
+                        User
                       </span>
                     )}
                   </div>
-                  <div className="user-actions">
-                    {!user.is_super_admin && (
+                  
+                  {/* ADD DELETE BUTTON - Only show for non-super-admins */}
+                  {!user.is_super_admin && (
+                    <div className="user-actions">
                       <button
-                        onClick={() =>
-                          handlePromoteUser(user.user_id, user.email)
-                        }
-                        disabled={processingAction === `user-${user.user_id}`}
-                        className="btn btn-promote"
+                        onClick={() => handleDeleteUser(user.user_id, user.email)}
+                        disabled={processingAction === user.user_id}
+                        className="btn btn-delete"
                       >
-                        <Crown size={16} />
-                        {processingAction === `user-${user.user_id}`
-                          ? "Promoting..."
-                          : "Promote to Admin"}
+                        <Trash2 size={16} />
+                        {processingAction === user.user_id ? "Deleting..." : "Delete User"}
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

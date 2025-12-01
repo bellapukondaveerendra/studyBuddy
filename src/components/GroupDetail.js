@@ -50,12 +50,13 @@ const GroupDetail = ({ groupId, onNavigate }) => {
   const [generatingLink, setGeneratingLink] = useState(false);
 
   const [showAddResource, setShowAddResource] = useState(false);
-  const [newResource, setNewResource] = useState({
-    type: "link",
-    title: "",
-    url: "",
-    description: "",
-  });
+  const [resourceType, setResourceType] = useState("Video"); // Add this
+  const [newResource, setNewResource] = useState({ title: "", url: "" }); // Simplified
+  const [selectedFile, setSelectedFile] = useState(null); // For documents
+  const [selectedVideoFile, setSelectedVideoFile] = useState(null); // NEW - For videos
+  const [isAddingResource, setIsAddingResource] = useState(false); // Renamed from addingResource
+
+
   const [addingResource, setAddingResource] = useState(false);
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -138,6 +139,186 @@ const GroupDetail = ({ groupId, onNavigate }) => {
     }
     setAddingResource(false);
   };
+
+  // Add this helper function for showing messages
+const showMessage = (text, type) => {
+  // If you already have a showMessage function, skip this
+  // Otherwise add this simple version:
+  alert(text); // Simple version - replace with your toast/notification system
+};
+const addResource = async () => {
+  // Validation
+  if (resourceType === "Video" && !newResource.url && !selectedVideoFile) {
+    showMessage("Please enter a video URL or upload a video file", "error");
+    return;
+  }
+  
+  if (resourceType === "Document" && !selectedFile) {
+    showMessage("Please select a file to upload", "error");
+    return;
+  }
+
+  if ((resourceType === "Link" || resourceType === "Article") && !newResource.url) {
+    showMessage("Please enter a URL", "error");
+    return;
+  }
+
+  if (!newResource.title.trim()) {
+    showMessage("Please enter a title", "error");
+    return;
+  }
+
+  setIsAddingResource(true);
+
+  try {
+    let resourceUrl = newResource.url;
+
+    // Handle Document upload to S3
+    if (resourceType === "Document" && selectedFile) {
+      try {
+        const token = localStorage.getItem("authToken");
+        
+        // Get upload URL from backend
+        const uploadUrlResponse = await fetch(
+          `${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/upload-url`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              fileName: selectedFile.name,
+              fileType: selectedFile.type,
+            }),
+          }
+        );
+
+        const uploadData = await uploadUrlResponse.json();
+
+        if (!uploadUrlResponse.ok) {
+          throw new Error(uploadData.message || "Failed to get upload URL");
+        }
+
+        // Upload file to S3
+        await fetch(uploadData.uploadUrl, {
+          method: "PUT",
+          body: selectedFile,
+          headers: {
+            "Content-Type": selectedFile.type,
+          },
+        });
+
+        resourceUrl = uploadData.publicUrl;
+      } catch (error) {
+        console.error("File upload error:", error);
+        showMessage("Failed to upload file. Please try again.", "error");
+        setIsAddingResource(false);
+        return;
+      }
+    }
+
+    // Handle Video upload to S3 (NEW)
+    if (resourceType === "Video" && selectedVideoFile) {
+      try {
+        const token = localStorage.getItem("authToken");
+        
+        // Get upload URL from backend
+        const uploadUrlResponse = await fetch(
+          `${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/upload-url`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              fileName: selectedVideoFile.name,
+              fileType: selectedVideoFile.type,
+            }),
+          }
+        );
+
+        const uploadData = await uploadUrlResponse.json();
+
+        if (!uploadUrlResponse.ok) {
+          throw new Error(uploadData.message || "Failed to get upload URL");
+        }
+
+        // Upload video to S3
+        await fetch(uploadData.uploadUrl, {
+          method: "PUT",
+          body: selectedVideoFile,
+          headers: {
+            "Content-Type": selectedVideoFile.type,
+          },
+        });
+
+        resourceUrl = uploadData.publicUrl;
+      } catch (error) {
+        console.error("Video upload error:", error);
+        showMessage("Failed to upload video. Please try again.", "error");
+        setIsAddingResource(false);
+        return;
+      }
+    }
+
+    // Add resource to group
+    const token = localStorage.getItem("authToken");
+    const response = await fetch(
+      `${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/resources`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          type: resourceType,
+          title: newResource.title.trim(),
+          url: resourceUrl,
+        }),
+      }
+    );
+
+    if (response.ok) {
+      showMessage("Resource added successfully!", "success");
+      setNewResource({ title: "", url: "" });
+      setSelectedFile(null);
+      setSelectedVideoFile(null);
+      setShowAddResource(false);
+      await fetchGroupDetails();
+    } else {
+      const errorData = await response.json();
+      showMessage(errorData.message || "Failed to add resource", "error");
+    }
+  } catch (error) {
+    console.error("Add resource error:", error);
+    showMessage("Failed to add resource. Please try again.", "error");
+  } finally {
+    setIsAddingResource(false);
+  }
+};
+
+const getResourceUrl = async (s3Key) => {
+  try {
+    const token = localStorage.getItem("authToken");
+    const response = await fetch(
+      `${process.env.REACT_APP_API_URL || '/api'}/groups/${groupId}/resource-url/${s3Key}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    
+    const data = await response.json();
+    return data.url;
+  } catch (error) {
+    console.error("Error getting resource URL:", error);
+    return null;
+  }
+};
 
   const handleDeleteResource = async (resourceId) => {
     if (!window.confirm("Are you sure you want to delete this resource?")) {
@@ -770,135 +951,160 @@ const GroupDetail = ({ groupId, onNavigate }) => {
             </div>
 
             {/* Add Resource Form */}
-            {showAddResource && (
-              <div className="add-resource-form">
-                <div className="form-header">
-                  <h4>Add New Resource</h4>
-                  <button
-                    onClick={() => {
-                      setShowAddResource(false);
-                      setNewResource({
-                        type: "link",
-                        title: "",
-                        url: "",
-                        description: "",
-                      });
-                    }}
-                    className="close-btn"
-                  >
-                    <XCircle size={20} />
-                  </button>
-                </div>
+{showAddResource && (
+  <div className="modal-overlay" onClick={() => setShowAddResource(false)}>
+    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-header">
+        <h3>Add New Resource</h3>
+        <button 
+          onClick={() => setShowAddResource(false)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+        >
+          <XCircle size={24} />
+        </button>
+      </div>
 
-                <div className="form-content">
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Resource Type</label>
-                      <select
-                        value={newResource.type}
-                        onChange={(e) =>
-                          setNewResource({
-                            ...newResource,
-                            type: e.target.value,
-                          })
-                        }
-                        className="form-select"
-                      >
-                        <option value="link">Link</option>
-                        <option value="video">Video</option>
-                        <option value="article">Article</option>
-                        <option value="document">Document</option>
-                        <option value="book">Book</option>
-                      </select>
-                    </div>
-                  </div>
+      <div className="modal-body">
+        <div className="form-group">
+          <label>Resource Type</label>
+          <select
+            value={resourceType}
+            onChange={(e) => {
+              setResourceType(e.target.value);
+              setSelectedFile(null);
+              setSelectedVideoFile(null);
+              setNewResource({ title: "", url: "" });
+            }}
+            className="form-select"
+          >
+            <option value="Video">Video</option>
+            <option value="Document">Document</option>
+            <option value="Link">Link</option>
+            <option value="Article">Article</option>
+          </select>
+        </div>
 
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Title *</label>
-                      <input
-                        type="text"
-                        value={newResource.title}
-                        onChange={(e) =>
-                          setNewResource({
-                            ...newResource,
-                            title: e.target.value,
-                          })
-                        }
-                        placeholder="Enter resource title"
-                        className="form-input"
-                        maxLength={100}
-                      />
-                    </div>
-                  </div>
+        <div className="form-group">
+          <label>Title *</label>
+          <input
+            type="text"
+            value={newResource.title}
+            onChange={(e) =>
+              setNewResource({ ...newResource, title: e.target.value })
+            }
+            placeholder="Enter resource title"
+            className="form-input"
+          />
+        </div>
 
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>URL *</label>
-                      <input
-                        type="url"
-                        value={newResource.url}
-                        onChange={(e) =>
-                          setNewResource({
-                            ...newResource,
-                            url: e.target.value,
-                          })
-                        }
-                        placeholder="https://example.com"
-                        className="form-input"
-                      />
-                    </div>
-                  </div>
+        {/* VIDEO: Show both URL input AND file upload option */}
+        {resourceType === "Video" && (
+          <>
+            <div className="form-group">
+              <label>Video URL (YouTube, Vimeo, etc.)</label>
+              <input
+                type="url"
+                value={newResource.url}
+                onChange={(e) =>
+                  setNewResource({ ...newResource, url: e.target.value })
+                }
+                placeholder="https://example.com"
+                className="form-input"
+                disabled={selectedVideoFile !== null}
+              />
+            </div>
+            
+            <div style={{ 
+              textAlign: 'center', 
+              margin: '16px 0', 
+              color: '#6b7280',
+              fontWeight: 500 
+            }}>OR</div>
+            
+            <div className="form-group">
+              <label>Upload Video File (MP4, WebM, etc.)</label>
+              <input
+                type="file"
+                accept="video/*"
+                onChange={(e) => {
+                  setSelectedVideoFile(e.target.files[0]);
+                  setNewResource({ ...newResource, url: "" });
+                }}
+                disabled={newResource.url !== ""}
+                className="form-input"
+              />
+              {selectedVideoFile && (
+                <p style={{ 
+                  marginTop: '8px', 
+                  fontSize: '0.875rem', 
+                  color: '#6b7280' 
+                }}>
+                  Selected: {selectedVideoFile.name} (
+                  {(selectedVideoFile.size / (1024 * 1024)).toFixed(2)} MB)
+                </p>
+              )}
+            </div>
+          </>
+        )}
 
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Description</label>
-                      <textarea
-                        value={newResource.description}
-                        onChange={(e) =>
-                          setNewResource({
-                            ...newResource,
-                            description: e.target.value,
-                          })
-                        }
-                        placeholder="Brief description of this resource"
-                        className="form-textarea"
-                        rows={3}
-                        maxLength={500}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-actions">
-                    <button
-                      onClick={() => {
-                        setShowAddResource(false);
-                        setNewResource({
-                          type: "link",
-                          title: "",
-                          url: "",
-                          description: "",
-                        });
-                      }}
-                      className="btn btn-secondary"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleAddResource}
-                      disabled={
-                        addingResource ||
-                        !newResource.title.trim() ||
-                        !newResource.url.trim()
-                      }
-                      className="btn btn-primary"
-                    >
-                      {addingResource ? "Adding..." : "Add Resource"}
-                    </button>
-                  </div>
-                </div>
-              </div>
+        {/* DOCUMENT upload */}
+        {resourceType === "Document" && (
+          <div className="form-group">
+            <label>Upload File *</label>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.ppt,.pptx"
+              onChange={(e) => setSelectedFile(e.target.files[0])}
+              className="form-input"
+            />
+            {selectedFile && (
+              <p style={{ 
+                marginTop: '8px', 
+                fontSize: '0.875rem', 
+                color: '#6b7280' 
+              }}>
+                Selected: {selectedFile.name} (
+                {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
+              </p>
             )}
+          </div>
+        )}
+
+        {/* URL for Link/Article */}
+        {(resourceType === "Link" || resourceType === "Article") && (
+          <div className="form-group">
+            <label>URL *</label>
+            <input
+              type="url"
+              value={newResource.url}
+              onChange={(e) =>
+                setNewResource({ ...newResource, url: e.target.value })
+              }
+              placeholder="https://example.com"
+              className="form-input"
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="modal-footer">
+        <button
+          onClick={() => setShowAddResource(false)}
+          className="btn-secondary"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={addResource}
+          disabled={isAddingResource}
+          className="btn-primary"
+        >
+          {isAddingResource ? "Adding..." : "Add Resource"}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
             {group.resources?.length === 0 ? (
               <div className="no-resources">
@@ -911,61 +1117,78 @@ const GroupDetail = ({ groupId, onNavigate }) => {
               </div>
             ) : (
               <div className="resources-list">
-                {group.resources?.map((resource) => (
-                  <div key={resource._id} className="resource-card">
-                    <div className="resource-header">
-                      <div className="resource-icon">
-                        {resource.type === "video" && <Video size={20} />}
-                        {resource.type === "article" && <FileText size={20} />}
-                        {resource.type === "link" && <ExternalLink size={20} />}
-                        {resource.type === "document" && <FileText size={20} />}
-                        {resource.type === "book" && <BookOpen size={20} />}
-                      </div>
-                      <span className="resource-type">{resource.type}</span>
-                      {(group.current_user_is_admin ||
-                        resource.uploaded_by === user.user_id) && (
-                        <button
-                          onClick={() => handleDeleteResource(resource._id)}
-                          className="delete-resource-btn"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </div>
+{group.resources?.map((resource) => (
+  <div key={resource.resource_id} className="resource-card">
+    <div className="resource-header">
+      <div className="resource-info">
+        <div className="resource-icon">
+          {resource.type === "Video" && <Video size={20} />}
+          {resource.type === "Article" && <FileText size={20} />}
+          {resource.type === "Link" && <Link size={20} />}
+          {resource.type === "Document" && <FileText size={20} />}
+        </div>
+        <div>
+          <h4>{resource.title}</h4>
+          <span className="resource-type">{resource.type}</span>
+        </div>
+      </div>
 
-                    <div className="resource-info">
-                      <h4>{resource.title}</h4>
-                      <a
-                        href={resource.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="resource-url"
-                      >
-                        {resource.url}
-                      </a>
-                      {resource.description && (
-                        <p className="resource-description">
-                          {resource.description}
-                        </p>
-                      )}
-                      <div className="resource-meta">
-                        <span>Added by: {resource.uploaded_by_name}</span>
-                        <span>•</span>
-                        <span>{formatDate(resource.uploaded_at)}</span>
-                      </div>
-                    </div>
+      {/* Delete button for admins/creators */}
+      {group.current_user_is_admin && (
+        <button
+          onClick={() => handleDeleteResource(resource.resource_id)}
+          className="delete-resource-btn"
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
+    </div>
 
-                    <a
-                      href={resource.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="resource-link"
-                    >
-                      <ExternalLink size={16} />
-                      Open
-                    </a>
-                  </div>
-                ))}
+    {/* Resource Link/Button */}
+    <div className="resource-actions">
+      {/* For Videos and Documents - Show as button to open in new tab */}
+      {(resource.type === "Video" || resource.type === "Document") && (
+        <a
+          href={resource.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-view-resource"
+        >
+          <ExternalLink size={16} />
+          {resource.type === "Video" ? "Watch Video" : "View Document"}
+        </a>
+      )}
+
+      {/* For Links and Articles - Show URL and button */}
+      {(resource.type === "Link" || resource.type === "Article") && (
+        <>
+          <a
+            href={resource.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="resource-url"
+          >
+            {resource.url}
+          </a>
+          <a
+            href={resource.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-view-resource"
+          >
+            <ExternalLink size={16} />
+            Visit Link
+          </a>
+        </>
+      )}
+    </div>
+
+    {/* Metadata */}
+    <div className="resource-meta">
+      <span>Added: {new Date(resource.uploaded_at).toLocaleDateString()}</span>
+    </div>
+  </div>
+))}
               </div>
             )}
           </div>

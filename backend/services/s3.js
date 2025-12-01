@@ -106,6 +106,28 @@ const s3Service = {
       throw new Error("Failed to generate upload URL");
     }
   },
+  getSignedDownloadUrl: async (key, expiresIn = 3600) => {
+  try {
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key: key,
+    };
+
+    const command = new GetObjectCommand(params);
+    const signedUrl = await getSignedUrl(s3Client, command, {
+      expiresIn: expiresIn, // URL valid for 1 hour
+    });
+
+    return {
+      success: true,
+      url: signedUrl,
+      expiresIn: expiresIn,
+    };
+  } catch (error) {
+    console.error("S3 get signed URL error:", error);
+    throw new Error("Failed to get signed URL");
+  }
+},
 
   // Delete file from S3
   deleteFile: async (key) => {

@@ -45,9 +45,9 @@ api.interceptors.response.use(
 
 // Authentication API
 export const authAPI = {
-  signup: async (email, password, confirmPassword, firstName, lastName, dateOfBirth, phoneNumber = "") => {
+  signup: async (email, password, confirmPassword, firstName, lastName, dateOfBirth) => {
     const response = await api.post("/auth/signup", {
-      email, password, confirmPassword, firstName, lastName, dateOfBirth, phoneNumber,
+      email, password, confirmPassword, firstName, lastName, dateOfBirth,
     });
     return response.data;
   },
@@ -195,6 +195,19 @@ export const adminAPI = {
 
   promoteUser: async (userId) => {
     const response = await api.post(`/admin/users/${userId}/promote`);
+    return response.data;
+  },
+  deleteUser: async (userId) => {
+    const response = await api.delete(`/admin/users/${userId}`);
+    return response.data;
+  },
+   removeGroupMember: async (groupId, userId) => {
+    const response = await api.delete(`/admin/groups/${groupId}/members/${userId}`);
+    return response.data;
+  },
+
+  removeGroupResource: async (groupId, resourceId) => {
+    const response = await api.delete(`/admin/groups/${groupId}/resources/${resourceId}`);
     return response.data;
   },
 };

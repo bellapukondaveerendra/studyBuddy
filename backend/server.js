@@ -116,7 +116,7 @@ app.get("/api/health", (req, res) => {
 app.post("/api/auth/signup", async (req, res) => {
   console.log("📝 Signup request");
   try {
-    const { email, password, confirmPassword, firstName, lastName, dateOfBirth, phoneNumber } = req.body;
+    const { email, password, confirmPassword, firstName, lastName, dateOfBirth } = req.body;
 
     if (!email || !password || !confirmPassword || !firstName || !lastName || !dateOfBirth) {
       return res.status(400).json({
@@ -139,7 +139,7 @@ app.post("/api/auth/signup", async (req, res) => {
       });
     }
 
-    const result = await cognitoService.signUp(email, password, firstName, lastName, dateOfBirth, phoneNumber?.trim() || null);
+    const result = await cognitoService.signUp(email, password, firstName, lastName, dateOfBirth);
 
     res.json({
       success: true,
@@ -150,7 +150,6 @@ app.post("/api/auth/signup", async (req, res) => {
         first_name: result.first_name,
         last_name: result.last_name,
         date_of_birth: result.date_of_birth,
-        phone_number: result.phone_number,
         is_super_admin: result.is_super_admin,
       },
     });
@@ -481,6 +480,33 @@ app.get("/api/groups/my-groups", authenticateToken, async (req, res) => {
   }
 });
 
+// GET ALL ACTIVE GROUPS (for Find Groups page)
+app.get("/api/findGroups", authenticateToken, async (req, res) => {
+  console.log("🔍 Find Groups route hit for user:", req.user.userId);
+  try {
+    const allGroups = await dynamoService.getAllStudyGroups(req.user.userId);
+    
+    // Filter to only show approved/active groups
+    const activeGroups = allGroups.filter(group => 
+      group.status === "active" || group.status === "approved"
+    );
+    
+    console.log(`✅ Found ${activeGroups.length} active groups`);
+    
+    res.json({ 
+      success: true, 
+      groups: activeGroups 
+    });
+  } catch (error) {
+    console.error("Find groups error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to fetch study groups" 
+    });
+  }
+});
+
+
 app.get("/api/groups/:group_id", authenticateToken, async (req, res) => {
   try {
     const { group_id } = req.params;
@@ -746,6 +772,100 @@ app.post("/api/groups/join-requests/:request_id/reject", authenticateToken, asyn
     });
   }
 });
+
+// DELETE USER (Super Admin Only)
+app.delete("/api/admin/users/:user_id", authenticateToken, authenticateSuperAdmin, async (req, res) => {
+  console.log("🗑️  Delete user request");
+  try {
+    const { user_id } = req.params;
+
+    // Prevent deleting yourself
+    if (user_id === req.user.userId) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot delete your own account",
+      });
+    }
+
+    // Check if user is super admin
+    const targetUser = await cognitoService.getUserById(user_id);
+    if (targetUser.is_super_admin) {
+      return res.status(403).json({
+        success: false,
+        message: "Cannot delete super admin users",
+      });
+    }
+
+    // Delete user from Cognito
+    await cognitoService.deleteUser(user_id);
+
+    console.log(`✅ User ${user_id} deleted successfully`);
+
+    res.json({
+      success: true,
+      message: "User deleted successfully",
+    });
+  } catch (error) {
+    console.error("❌ Delete user error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete user: " + error.message,
+    });
+  }
+});
+
+
+app.delete(
+  "/api/admin/groups/:group_id/members/:user_id",
+  authenticateToken,
+  authenticateSuperAdmin,
+  async (req, res) => {
+    console.log("🗑️  Admin remove member request");
+    try {
+      const { group_id, user_id } = req.params;
+
+      await dynamoService.adminRemoveGroupMember(group_id, user_id);
+
+      res.json({
+        success: true,
+        message: "Member removed successfully",
+      });
+    } catch (error) {
+      console.error("❌ Admin remove member error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to remove member: " + error.message,
+      });
+    }
+  }
+);
+
+// REMOVE GROUP RESOURCE (Super Admin)
+app.delete(
+  "/api/admin/groups/:group_id/resources/:resource_id",
+  authenticateToken,
+  authenticateSuperAdmin,
+  async (req, res) => {
+    console.log("🗑️  Admin remove resource request");
+    try {
+      const { group_id, resource_id } = req.params;
+
+      await dynamoService.adminRemoveGroupResource(group_id, resource_id);
+
+      res.json({
+        success: true,
+        message: "Resource removed successfully",
+      });
+    } catch (error) {
+      console.error("❌ Admin remove resource error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to remove resource: " + error.message,
+      });
+    }
+  }
+);
+
 
 // ========== UTILITY ROUTES ==========
 

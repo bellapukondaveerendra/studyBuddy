@@ -40,32 +40,10 @@ const computeSecretHash = (username) => {
     .digest("base64");
 };
 
-
-const formatPhoneNumber = (phoneNumber) => {
-  if (!phoneNumber || phoneNumber.trim() === '') {
-    return null; // Return null for empty phone numbers
-  }
-
-  // Remove all non-digit characters
-  let cleaned = phoneNumber.replace(/\D/g, '');
-
-  // If number already has country code (11+ digits), add + prefix
-  if (cleaned.length >= 10) {
-    // If it doesn't start with 1 (US country code) and is 10 digits, assume US
-    if (!cleaned.startsWith('1') && cleaned.length === 10) {
-      cleaned = '1' + cleaned;
-    }
-    return '+' + cleaned;
-  }
-
-  // If number is invalid, return null
-  return null;
-};
 const cognitoService = {
   // Sign Up User
-  signUp: async (email, password, firstName, lastName, dateOfBirth, phoneNumber) => {
+  signUp: async (email, password, firstName, lastName, dateOfBirth) => {
     try {
-      const formattedPhone = formatPhoneNumber(phoneNumber);
       const params = {
         ClientId: CLIENT_ID,
         Username: email,
@@ -74,8 +52,7 @@ const cognitoService = {
           { Name: "email", Value: email },
           { Name: "given_name", Value: firstName },
           { Name: "family_name", Value: lastName },
-          { Name: "birthdate", Value: dateOfBirth },
-          ...(formattedPhone ? [{ Name: "phone_number", Value: formattedPhone }] : []),
+          { Name: "birthdate", Value: dateOfBirth }
         ],
         SecretHash: computeSecretHash(email),
       };
@@ -93,7 +70,6 @@ const cognitoService = {
         first_name: firstName,
         last_name: lastName,
         date_of_birth: dateOfBirth,
-        phone_number: phoneNumber,
         is_super_admin: isSuperAdmin,
         message: "User created successfully. Please verify your email.",
       };
@@ -187,7 +163,6 @@ const cognitoService = {
         first_name: attributes.given_name || "",
         last_name: attributes.family_name || "",
         date_of_birth: attributes.birthdate || "",
-        phone_number: attributes.phone_number || "",
         is_super_admin: isSuperAdmin,
       };
     } catch (error) {
@@ -221,7 +196,6 @@ const cognitoService = {
         first_name: attributes.given_name || "",
         last_name: attributes.family_name || "",
         date_of_birth: attributes.birthdate || "",
-        phone_number: attributes.phone_number || "",
         is_super_admin: isSuperAdmin,
         created_at: response.UserCreateDate,
       };
@@ -262,7 +236,6 @@ const cognitoService = {
           first_name: attributes.given_name || "",
           last_name: attributes.family_name || "",
           date_of_birth: attributes.birthdate || "",
-          phone_number: attributes.phone_number || "",
           is_super_admin: isSuperAdmin,
           created_at: user.UserCreateDate,
           status: user.UserStatus, // CONFIRMED, UNCONFIRMED, etc.
@@ -340,25 +313,25 @@ isSuperAdmin: async (userId) => {
   },
 
   // Delete User (Admin)
-  deleteUser: async (userId) => {
-    try {
-      const params = {
-        UserPoolId: USER_POOL_ID,
-        Username: userId,
-      };
+    deleteUser: async (userId) => {
+        try {
+          const params = {
+            UserPoolId: USER_POOL_ID,
+            Username: userId,
+          };
 
-      const command = new AdminDeleteUserCommand(params);
-      await cognitoClient.send(command);
+          const command = new AdminDeleteUserCommand(params);
+          await cognitoClient.send(command);
 
-      return {
-        success: true,
-        message: "User deleted successfully",
-      };
-    } catch (error) {
-      console.error("Delete user error:", error);
-      throw { message: "Failed to delete user", code: "DELETE_ERROR" };
-    }
-  },
+          return {
+            success: true,
+            message: "User deleted successfully",
+          };
+        } catch (error) {
+          console.error("Cognito delete user error:", error);
+          throw new Error("Failed to delete user from Cognito");
+        }
+      },
 };
 
 // Log super admin configuration on startup
