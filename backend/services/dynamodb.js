@@ -228,31 +228,57 @@ getUserGroups: async (userId) => {
 },
 
   // Get group by ID
-  getGroupById: async (groupId) => {
-    try {
-      const params = {
-        TableName: TABLES.GROUPS,
-        Key: marshall({ group_id: groupId }),
-      };
+// Get group by ID with admin check
+getGroupById: async (groupId, userId = null) => {
+  try {
+    const params = {
+      TableName: TABLES.GROUPS,
+      Key: marshall({ group_id: groupId }),
+    };
 
-      const result = await dynamoClient.send(new GetItemCommand(params));
-      if (!result.Item) return null;
+    const result = await dynamoClient.send(new GetItemCommand(params));
 
-      const group = unmarshall(result.Item);
-      
-      // Get members
-      const members = await dynamoService.getGroupMembers(groupId);
-      
-      return {
-        ...group,
-        members,
-        member_count: members.length,
-      };
-    } catch (error) {
-      console.error("Get group by ID error:", error);
-      return null;
+    if (!result.Item) {
+      throw new Error("Group not found");
     }
-  },
+
+    const group = unmarshall(result.Item);
+
+    // Get group members
+    const membersParams = {
+      TableName: TABLES.MEMBERS,
+      KeyConditionExpression: "group_id = :groupId",
+      ExpressionAttributeValues: marshall({
+        ":groupId": groupId,
+      }),
+    };
+
+    const membersResult = await dynamoClient.send(new QueryCommand(membersParams));
+    const members = membersResult.Items
+      ? membersResult.Items.map((item) => unmarshall(item))
+      : [];
+
+    group.members = members;
+    group.member_count = members.length;
+
+    // CRITICAL FIX: Check if current user is admin
+    if (userId) {
+      const userMember = members.find(m => m.user_id === userId);
+      group.current_user_is_admin = userMember?.is_admin === true || group.created_by === userId;
+      
+      console.log(`👤 User ${userId} admin status:`, group.current_user_is_admin);
+      console.log(`   Is creator:`, group.created_by === userId);
+      console.log(`   Is admin member:`, userMember?.is_admin === true);
+    } else {
+      group.current_user_is_admin = false;
+    }
+
+    return group;
+  } catch (error) {
+    console.error("Get group error:", error);
+    throw new Error("Failed to get group");
+  }
+},
 
   // Update group
   updateGroup: async (groupId, updates) => {

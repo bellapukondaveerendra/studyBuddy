@@ -510,10 +510,18 @@ app.get("/api/findGroups", authenticateToken, async (req, res) => {
 app.get("/api/groups/:group_id", authenticateToken, async (req, res) => {
   try {
     const { group_id } = req.params;
-    const group = await dynamoService.getGroupById(group_id);
+    
+    console.log(`📋 Getting group ${group_id} for user ${req.user.userId}`);
+    
+    // Pass userId to check admin status
+    const group = await dynamoService.getGroupById(group_id, req.user.userId);
+    
     if (!group) {
       return res.status(404).json({ success: false, message: "Group not found" });
     }
+    
+    console.log(`✅ Group retrieved. Admin status: ${group.current_user_is_admin}`);
+    
     res.json({ success: true, group });
   } catch (error) {
     console.error("Get group error:", error);

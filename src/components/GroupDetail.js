@@ -824,7 +824,7 @@ const fetchJoinRequests = async () => {
                           <div className="request-date">
                             <Calendar size={14} />
                             <span>
-                              Requested: {formatDate(request.requested_at)}
+                              Requested: {formatDate(request.created_at)}
                             </span>
                           </div>
                           {request.message && (
@@ -1286,7 +1286,7 @@ const fetchJoinRequests = async () => {
                                 <h5>{request.user_email}</h5>
                                 <span className="request-date">
                                   Requested on{" "}
-                                  {formatDate(request.requested_at)}
+                                  {formatDate(request.created_at)}
                                 </span>
                               </div>
                             </div>
@@ -1340,7 +1340,7 @@ const fetchJoinRequests = async () => {
                             </span>
                             <span>
                               <Calendar size={14} />
-                              {new Date(request.requested_at).toLocaleString()}
+                              {new Date(request.created_at).toLocaleString()}
                             </span>
                           </div>
                         </div>
